@@ -1,5 +1,3 @@
-#
-# supported versions here: https://hub.docker.com/_/rust
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder
@@ -11,27 +9,28 @@ RUN apk add --no-cache git make musl-dev perl
 
 WORKDIR /redlib
 
-RUN git config --global user.email "builder@docker" \
-  && git config --global user.name "Docker Builder" \
-  && git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
+RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
   && git fetch origin pull/506/head:pr506 \
   && git fetch origin pull/509/head:pr509 \
   && git checkout pr509 \
-  && git merge pr506 --no-ff -m "Merge PR#506 into pr509"
-RUN cargo build --release --locked --bin redlib
-RUN echo "finished building redlib from ${REDLIB_SRC}/${REDLIB_BRANCH}!"
+  && git -c user.email="builder" -c user.name="builder" merge pr506 --no-ff -m "Merge PR#506"
 
-FROM alpine:${ALPINE_VERSION} AS release
+RUN cargo fetch
 
-RUN apk add --no-cache ca-certificates
+RUN TARGET=$(rustc -vV | grep host | cut -d' ' -f2) && \
+  mkdir -p .cargo && printf '%s\n' \
+  "[target.$TARGET]" \
+  'rustflags = ["-C", "target-feature=+crt-static"]' \
+  > .cargo/config.toml \
+  && cargo build --release --locked --bin redlib --target "$TARGET"
 
-COPY --from=builder /redlib/target/release/redlib /usr/local/bin/redlib
+FROM scratch AS release
 
-RUN adduser --home /nonexistent --no-create-home --disabled-password redlib
-USER redlib
+COPY --from=builder /redlib/target/*/release/redlib /redlib
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+USER 1000:1000
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=1m --timeout=3s CMD wget --spider -q http://localhost:8080/settings || exit 1
-
-CMD ["redlib"]
+ENTRYPOINT ["/redlib"]

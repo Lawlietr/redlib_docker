@@ -8,12 +8,14 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/settings"]
-      interval: 1m
-      timeout: 3s
-      retries: 3
-      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
     environment:
       - PORT=8080
       - DOMAIN=localhost
