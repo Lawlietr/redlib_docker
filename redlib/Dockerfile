@@ -1,3 +1,4 @@
+#
 # supported versions here: https://hub.docker.com/_/rust
 ARG ALPINE_VERSION=3.22
 
