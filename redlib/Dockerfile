@@ -3,8 +3,8 @@ ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder
 
-ARG REDLIB_SRC=https://github.com/chowder/redlib.git
-ARG REDLIB_BRANCH=feature/tls-openssl
+ARG REDLIB_SRC=https://github.com/redlib-org/redlib.git
+ARG REDLIB_BRANCH=main
 
 RUN apk add --no-cache git make musl-dev perl
 
