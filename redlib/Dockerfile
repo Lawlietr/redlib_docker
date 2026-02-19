@@ -10,7 +10,11 @@ RUN apk add --no-cache git make musl-dev perl
 
 WORKDIR /redlib
 
-RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" .
+RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
+  && git fetch origin pull/506/head:pr506 \
+  && git fetch origin pull/509/head:pr509 \
+  && git checkout pr509 \
+  && git merge pr506 --no-ff -m "Merge PR#506 into pr509"
 RUN cargo build --release --locked --bin redlib
 RUN echo "finished building redlib from ${REDLIB_SRC}/${REDLIB_BRANCH}!"
 
