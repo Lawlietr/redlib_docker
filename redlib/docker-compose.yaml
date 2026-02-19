@@ -1,0 +1,25 @@
+services:
+  redlib:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: redlib
+    container_name: redlib
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/settings"]
+      interval: 1m
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    environment:
+      - PORT=8080
+      - DOMAIN=localhost
+    networks:
+      - redlib-network
+
+networks:
+  redlib-network:
+    driver: bridge
