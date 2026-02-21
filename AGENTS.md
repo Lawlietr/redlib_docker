@@ -2,13 +2,11 @@
 
 ## Project Overview
 
-This repository contains Docker build configurations for Redlib, a lightweight Reddit alternative. The actual Rust source code is cloned from an external repository (https://github.com/chowder/redlib.git) during the build process.
+This repository contains Docker build configurations for Redlib, a lightweight Reddit alternative built with Rust. The actual Rust source code is cloned from an external repository (https://github.com/redlib-org/redlib.git) during the Docker build process.
 
 ## Build Commands
 
 ### Local Docker Build
-
-Build the Redlib container locally:
 
 ```bash
 docker build -f redlib/Dockerfile -t redlib .
@@ -32,82 +30,138 @@ docker build --build-arg REDLIB_BRANCH=main -f redlib/Dockerfile -t redlib .
 docker run -p 8080:8080 -d --name redlib redlib
 ```
 
-### Verify Container Health
+### Test Build (Builder Stage Only)
 
 ```bash
-docker ps
-docker inspect --format='{{.State.Health.Status}}' redlib
+docker build --target builder -f redlib/Dockerfile -t redlib-test .
+```
+
+### Test Binary in Container
+
+```bash
+docker run --rm --entrypoint /redlib redlib-test --help
 ```
 
 ## CI/CD
 
 ### GitHub Actions Workflow
 
-The repository uses GitHub Actions for automated builds and pushes to GitHub Container Registry:
-
+Automated builds via GitHub Actions:
 - **Trigger**: Changes to any `*/Dockerfile` file
-- **Manual trigger**: Available in GitHub Actions interface
-- **Platforms**: Builds for linux/amd64 and linux/arm64
-- **Image naming**: `ghcr.io/{owner}/containers:{app-name}`
+- **Platforms**: linux/amd64 and linux/arm64
+- **Registry**: ghcr.io/{owner}/containers:{app-name}
 
-To trigger manually:
-
-1. Go to Actions tab
-2. Select "Build container images"
-3. Enter comma-separated app names (e.g., "redlib")
-4. Click "Run workflow"
+Manual trigger: GitHub Actions → "Build container images" → enter app names → "Run workflow"
 
 ## Dockerfile Guidelines
 
 ### Structure
 
-The Dockerfile follows a multi-stage build pattern:
+Multi-stage build:
+1. **Builder**: Clone Redlib, apply PRs, build with Cargo
+2. **Release**: Copy binary, minimal Alpine runtime
 
-1. **Builder stage**: Clones Redlib source and builds with Cargo
-2. **Release stage**: Copies binary and sets up minimal Alpine runtime
+### Build Arguments
+
+| ARG | Default | Description |
+|-----|---------|-------------|
+| `ALPINE_VERSION` | `3.22` | Alpine version for builder |
+| `REDLIB_SRC` | `https://github.com/redlib-org/redlib.git` | Redlib git source |
+| `REDLIB_BRANCH` | `main` | Branch to clone |
 
 ### Best Practices
 
-- **Alpine version**: Specify explicit Alpine version in ARG
-- **Non-root user**: Always run as non-root user (redlib)
-- **Health checks**: Include healthcheck for container monitoring
-- **Caching**: Use `--no-cache` for apk to ensure fresh package lists
-- **Security**: Use `--locked` flag for Cargo builds
+- Use `--no-cache` for apk installs
+- Use `--locked` for Cargo builds
+- Static linking via `crt-static` target feature
+- Non-root user (UID 1000:1000)
+- Minimal scratch base for release stage
+- Explicit ARG defaults
 
 ### Code Style
 
-- **Comments**: Keep comments concise and descriptive
-- **ARGs**: Use uppercase for build arguments
-- **Commands**: Follow Alpine package naming conventions
-- **User context**: Document user switching for security
+- Uppercase for all ARGs
+- Concise comments, descriptive
+- Group related operations in single RUN
+- Use `printf` for .cargo/config.toml generation
+- Follow Alpine package naming
 
 ## Project-Specific Notes
 
 ### Redlib Source Management
 
-- The Redlib source is cloned from GitHub during build
-- Branch can be customized via `REDLIB_BRANCH` build argument
-- The project uses TLS-OpenSSL branch currently
-- Build artifacts are cached in the builder stage
+- Source: https://github.com/redlib-org/redlib.git
+- PR merges: PR#506, PR#509 (merged into build)
+- Build: `cargo build --release --locked --bin redlib`
+- Static binary for minimal footprint
 
-### Environment Variables
-
-Configure via Docker environment variables:
+### Environment Variables (Runtime)
 
 - `PORT` - Server port (default: 8080)
 - `DOMAIN` - Domain name
-- `REDIS_URL` - Redis connection string (optional)
+- `REDIS_URL` - Redis connection (optional)
 
-### Troubleshooting
+### Current State
 
-**Build fails**: Check the Rust build logs for compilation errors
+- Binary: `/redlib` in container
+- Port: 8080 (exposed)
+- Health checks: Not configured (add if needed)
 
-**Healthcheck fails**: Verify network connectivity and port binding
+## Testing
 
-**Permission denied**: Ensure non-root user is used for runtime
+### Build Validation
+
+```bash
+# Validate build without push
+docker build --target builder -f redlib/Dockerfile -t redlib-test .
+
+# Test binary execution
+docker run --rm --entrypoint /redlib redlib-test --help
+```
+
+### Container Testing
+
+```bash
+# Run and verify
+docker run -p 8080:8080 -d --name redlib-test redlib
+docker ps
+docker logs redlib-test
+```
+
+### Cross-Platform
+
+```bash
+# Build for different architectures
+docker buildx build --platform linux/amd64,linux/arm64 -f redlib/Dockerfile -t redlib .
+```
+
+## Code Style Guidelines
+
+This repository contains Dockerfiles and build scripts (no Rust source in this repo):
+
+### Dockerfile Conventions
+
+- Follow official Dockerfile best practices
+- Multi-stage builds for smaller images
+- Explicit ARG defaults
+- Clear stage names
+- Sparse comments
+
+### Shell Script Conventions
+
+- Use `set -euo pipefail` for error handling
+- Quote variables: `"${VAR}"`
+- Use `&&` for command chaining in single RUN
+- Prefer `printf` over `echo` for portability
+
+### Git Operations
+
+- Shallow clone: `--depth 1`
+- PR merging: Use temporary refs, clean up
+- Set user email/name for git operations
 
 ## External References
 
-- Redlib GitHub: https://github.com/chowder/redlib
-- Rust Docker images: https://hub.docker.com/_/rust
-- Alpine Docker images: https://hub.docker.com/_/alpine
+- Redlib: https://github.com/redlib-org/redlib
+- Rust Docker: https://hub.docker.com/_/rust
+- Alpine Docker: https://hub.docker.com/_/alpine
