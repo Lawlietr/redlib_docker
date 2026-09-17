@@ -8,11 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       apps:
-        description: "Comma-separated list of applications to build (e.g., redlib)"
+        description: "Comma-separated list of applications to build (e.g., caddy,patroni)"
         required: false
 
 jobs:
   detect:
+    # Only run on GitHub; skip when hosted on Codeberg/Forgejo.
+    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
     outputs:
       apps_to_build: ${{ steps.detect.outputs.apps_to_build }}
@@ -20,6 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
+          # Fetch the current and previous commit to ensure `github.event.before` is available
           fetch-depth: 2
 
       - name: Detect Applications to Build
@@ -31,8 +34,9 @@ jobs:
 
   build:
     needs: detect
+    # Only run on GitHub; skip when hosted on Codeberg/Forgejo.
+    if: ${{ github.server_url == 'https://github.com' && needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
     runs-on: ubuntu-latest
-    if: ${{ needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -43,12 +47,12 @@ jobs:
       - name: Set up Docker buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Codeberg Container Registry
+      - name: Login to ghcr.io
         uses: docker/login-action@v3
         with:
-          registry: registry.codeberg.org
+          registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.CODEBERG_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Images
         run: |

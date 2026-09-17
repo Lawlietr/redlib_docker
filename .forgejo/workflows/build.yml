@@ -1,0 +1,46 @@
+name: Build container images (Codeberg)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "*/Dockerfile"
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: "Comma-separated list of applications to build (e.g., redlib)"
+        required: false
+
+jobs:
+  detect:
+    runs-on: codeberg-medium
+    outputs:
+      apps_to_build: ${{ steps.detect.outputs.apps_to_build }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # Fetch the current and previous commit to ensure `github.event.before` is available
+          fetch-depth: 2
+
+      - name: Detect Applications to Build
+        id: detect
+        run: |
+          bash .forgejo/scripts/detect_apps.sh "${{ github.event.inputs.apps }}" "${{ github.event.before }}" "${{ github.sha }}"
+        env:
+          GITHUB_OUTPUT: $GITHUB_OUTPUT
+
+  build:
+    needs: detect
+    runs-on: codeberg-medium
+    if: ${{ needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Codeberg Container Registry
+        run: echo "${{ secrets.CODEBERG_PAT }}" | podman login registry.codeberg.org --username "${{ github.repository_owner }}" --password-stdin
+
+      - name: Build and Push Images
+        run: |
+          bash .forgejo/scripts/build_and_push.sh "${{ needs.detect.outputs.apps_to_build }}"
