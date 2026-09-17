@@ -91,7 +91,12 @@ Multi-stage build:
 ### Redlib Source Management
 
 - Source: https://github.com/redlib-org/redlib.git
-- PR merges: PR#506, PR#509 (merged into build)
+- `REDLIB_BRANCH=main` so any upstream PR already merged into `main` is auto-included. Only still-OPEN PRs are baked manually (via the Dockerfile RUN chain below).
+- Baked PRs (still-open PRs fetched at build time and merged into `main`):
+  - Baseline: #506 (CMAF video format + `/vid/:id/cmaf/:size` proxy route), #509 (media/download handling)
+  - #521 (default post_sort applied immediately via `setting()`), #560 (user profile `/u/:name/s/:id` share links), #539 (lazy-load post images, drop SVG), #549 (`rich:video` support + CMAF regex, complements #506)
+- Bake mechanism (in `redlib/Dockerfile` builder RUN): clone → `git fetch origin pull/<n>/head:pr<N>` for each → `git checkout pr509` → `merge pr506` (plain) → `merge -X ours pr521 pr560 pr539 pr549`.
+  - `-X ours` is required for #521/#560/#539/#549: these branches predate `main`'s migration to the `wreq` HTTP/TLS backend, so `-X ours` keeps `main`'s current `client.rs` while applying each PR's own change. Verify the merged tree compiles (`cargo build --bin redlib`) before committing.
 - Build: `cargo build --release --locked --bin redlib`
 - Static binary for minimal footprint
 
@@ -156,9 +161,9 @@ This repository contains Dockerfiles and build scripts (no Rust source in this r
 
 ### Git Operations
 
-- Shallow clone: `--depth 1`
-- PR merging: Use temporary refs, clean up
-- Set user email/name for git operations
+- Shallow clone: `--depth 300` (deep enough to reach the merge base of old-based PRs like #521/#549; `--depth 1` fails 3-way merges for those. Bump if `main` advances past the PR bases.)
+- PR merging: Use temporary refs (`pull/<n>/head:pr<N>`), merge in a fixed order (baseline first), `-X ours` for PRs based on pre-`wreq` `main`
+- Set user email/name for git operations: `-c user.email="builder" -c user.name="builder"`
 
 ## External References
 
