@@ -6,6 +6,11 @@ This repository contains Docker build configurations for Redlib, a lightweight R
 
 This repository's own configuration files and scripts are licensed under the MIT License (see `LICENSE`). The bundled Redlib source (built at Docker build time) retains its own upstream license (AGPL-3.0).
 
+## Repository Layout
+
+- `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Records what is done and what is pending; keeps implementation details out. See the priority legend at the top of the file.
+- `design/` — **Implementation guidelines** for each task (deployment steps, config, gotchas). Detailed/longer explanations live here, referenced from `TODO.md`. Keep sensitive info (registration `uuid`/`token`, `CODEBERG_PAT`) out of these files; use placeholders and note where the real value must be entered.
+
 ## Build Commands
 
 ### Local Docker Build
