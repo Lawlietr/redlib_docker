@@ -9,11 +9,19 @@ RUN apk add --no-cache git make musl-dev perl
 
 WORKDIR /redlib
 
-RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
+RUN git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
   && git fetch origin pull/506/head:pr506 \
   && git fetch origin pull/509/head:pr509 \
+  && git fetch origin pull/521/head:pr521 \
+  && git fetch origin pull/560/head:pr560 \
+  && git fetch origin pull/539/head:pr539 \
+  && git fetch origin pull/549/head:pr549 \
   && git checkout pr509 \
-  && git -c user.email="builder" -c user.name="builder" merge pr506 --no-ff -m "Merge PR#506"
+  && git -c user.email="builder" -c user.name="builder" merge pr506 --no-ff -m "Merge PR#506" \
+  && git -c user.email="builder" -c user.name="builder" merge -X ours pr521 --no-ff -m "Merge PR#521" \
+  && git -c user.email="builder" -c user.name="builder" merge -X ours pr560 --no-ff -m "Merge PR#560" \
+  && git -c user.email="builder" -c user.name="builder" merge -X ours pr539 --no-ff -m "Merge PR#539" \
+  && git -c user.email="builder" -c user.name="builder" merge -X ours pr549 --no-ff -m "Merge PR#549"
 
 RUN cargo fetch
 
