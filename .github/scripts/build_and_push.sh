@@ -12,7 +12,7 @@ for app in "${apps[@]}"; do
 		docker buildx build \
 			--platform linux/amd64,linux/arm64 \
 			--push \
-			--tag "ghcr.io/${GITHUB_REPOSITORY_OWNER}/containers:$app" \
+			--tag "registry.codeberg.org/${GITHUB_REPOSITORY_OWNER}/containers:$app" \
 			"$app"
 	fi
 done
