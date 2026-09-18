@@ -19,12 +19,6 @@ This repository's own configuration files and scripts are licensed under the MIT
 docker build -f redlib/Dockerfile -t redlib .
 ```
 
-### Build with Specific Alpine Version
-
-```bash
-docker build --build-arg ALPINE_VERSION=3.22 -f redlib/Dockerfile -t redlib .
-```
-
 ### Build with Specific Redlib Branch
 
 ```bash
@@ -51,10 +45,18 @@ docker run --rm --entrypoint /redlib redlib-test --help
 
 ## CI/CD
 
-### GitHub Actions Workflow
+### Forgejo Actions (primary)
 
-Automated builds via GitHub Actions:
-- **Trigger**: Changes to any `*/Dockerfile` file
+`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit):
+- **Trigger**: Changes to any `*/Dockerfile` file, or manual dispatch from the local Forgejo UI
+- **Platform**: linux/amd64
+- **Registry**: `codeberg.org/lawlietr/redlib:latest` (lowercase namespace; login with the `CODEBERG_PAT` repo secret, write:packages scope)
+- Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 10GB runner box clean
+- Details: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
+
+### GitHub Actions Workflow (guarded backup)
+
+`.github/workflows/build.yml` is guarded with `if: ${{ github.server_url == 'https://github.com' }}` so it only runs when the repo is hosted on GitHub:
 - **Platforms**: linux/amd64 and linux/arm64
 - **Registry**: ghcr.io/{owner}/containers:{app-name}
 
@@ -65,22 +67,21 @@ Manual trigger: GitHub Actions → "Build container images" → enter app names 
 ### Structure
 
 Multi-stage build:
-1. **Builder**: Clone Redlib, apply PRs, build with Cargo
-2. **Release**: Copy binary, minimal Alpine runtime
+1. **Builder**: Clone Redlib (upstream `main`), build a fully static glibc binary with Cargo (wreq/BoringSSL needs glibc; musl is a dead end)
+2. **Release**: Copy binary + CA bundle, `scratch` runtime
 
 ### Build Arguments
 
 | ARG | Default | Description |
 |-----|---------|-------------|
-| `ALPINE_VERSION` | `3.22` | Alpine version for builder |
 | `REDLIB_SRC` | `https://github.com/redlib-org/redlib.git` | Redlib git source |
 | `REDLIB_BRANCH` | `main` | Branch to clone |
 
 ### Best Practices
 
-- Use `--no-cache` for apk installs
+- `apt-get --no-install-recommends`, drop package lists after install
 - Use `--locked` for Cargo builds
-- Static linking via `crt-static` target feature
+- Fully static binary via `cargo rustc --` flags (`+crt-static`, `relocation-model=static`, `link-args=-static`) — only on the final crate; putting them in `.cargo/config.toml` breaks proc-macro builds
 - Non-root user (UID 1000:1000)
 - Minimal scratch base for release stage
 - Explicit ARG defaults
@@ -90,8 +91,6 @@ Multi-stage build:
 - Uppercase for all ARGs
 - Concise comments, descriptive
 - Group related operations in single RUN
-- Use `printf` for .cargo/config.toml generation
-- Follow Alpine package naming
 
 ## Project-Specific Notes
 
@@ -171,4 +170,4 @@ This repository contains Dockerfiles and build scripts (no Rust source in this r
 
 - Redlib: https://github.com/redlib-org/redlib
 - Rust Docker: https://hub.docker.com/_/rust
-- Alpine Docker: https://hub.docker.com/_/alpine
+- Debian Docker: https://hub.docker.com/_/debian

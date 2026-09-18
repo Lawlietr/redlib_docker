@@ -49,8 +49,8 @@
 | 既有系統 | 2.6G | 常駐 |
 | runner 映像（base 45MB + 擴建 155MB） | ~0.2G | 常駐（實測） |
 | runner data/workspace | <0.1G | 常駐（小） |
-| build 瞬時：rust:alpine base pull | ~1.0G | **build 期間** |
-| build 瞬時：apk + git clone（depth 300 + 6 PR） | ~0.2-0.3G | **build 期間** |
+| build 瞬時：rust:1.98-slim-bookworm base pull | ~1.0G | **build 期間** |
+| build 瞬時：apt + git clone（depth 1） | ~0.2-0.3G | **build 期間** |
 | build 瞬時：cargo fetch（~450 crates） | ~0.5G | **build 期間** |
 | build 瞬時：cargo build release target | ~2.5-3.5G | **build 期間** |
 | 最終映像（scratch + 靜態二進位） | ~0.04G | push 後即刪 |
@@ -95,9 +95,9 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 - 已於本地 Forgejo redlib_docker（repo 層級）建立 runner；UUID + Token 在 12 的
   `config/config.yaml`（uuid）與 `credentials/token.txt`（token，`token_url` 引入）。
 - **勿寫入版本庫。** 舊機制（`register` 命令流程）的 token 已棄用，勿再用。
-- `CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設，首次 build 前必須完成**）。
+- `CODEBERG_PAT`（write:packages）已設於本地 Forgejo 的 redlib_docker repo secrets（repo-level，2026-09-18）。
 
-## Workflow 修正（已改待推送）
+## Workflow 修正（已推送上線，首次 build+push 成功）
 `.forgejo/workflows/build.yml` + `.forgejo/scripts/`：`runs-on: redlib`、podman→docker、
 登錄區 `codeberg.org/lawlietr/redlib:latest`、`disk_guard.sh` 守門、trap prune（見上紀律）。
 觸發：push 到 main 且 `*/Dockerfile` 有變、或手動 dispatch。
@@ -108,6 +108,8 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 - 舊新兩台同時 online 且 label 相同會重復接單 → 新機上線後停舊機，必要時在 UI 刪舊 runner 紀錄（清單，非設定）。
 
 ## 部署後驗證
+> **2026-09-18 已全部驗證通過**（首次 build+push 成功、映像公開可 pull、12 機磁碟持平）。
+
 1. Forgejo UI 的 runner 名單 online。
 2. 手動觸發 workflow → checkout → 磁碟守門通過 → docker build → push → prune。
 3. `codeberg.org/lawlietr/redlib:latest` 在 Codeberg package 頁面可見；

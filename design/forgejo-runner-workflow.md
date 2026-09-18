@@ -1,11 +1,11 @@
 # Workflow 調整 — 登錄區網址、runs-on、建構工具
 
-> **2026-09-18 已改完**（`.forgejo/workflows/build.yml` + `.forgejo/scripts/`，含 `disk_guard.sh` 與 trap prune），
-> 待 `CODEBERG_PAT` secret 設好後推送（推送即觸發首次 build）。
+> **2026-09-18 已改完並上線**：`CODEBERG_PAT`（repo-level）已設、首次完整 build+push 成功，
+> `codeberg.org/lawlietr/redlib:latest` 已公開可 pull。以下四點為當時的修正記錄。
 
 ## 背景
-現行 `.forgejo/workflows/build.yml` 為 Codeberg 託管 runner（podman / `codeberg-medium` /
-`registry.codeberg.org`）設計，與 12 機自架 Runner 不符。部署時需一併修正以下四點（外加認證與磁碟紀律）。
+原 `.forgejo/workflows/build.yml` 為 Codeberg 託管 runner（podman / `codeberg-medium` /
+`registry.codeberg.org`）設計，與 12 機自架 Runner 不符，已一併修正以下四點（外加認證與磁碟紀律）。
 
 ## 1. 登錄區網址（重要）
 - 舊：`registry.codeberg.org/Lawlietr/containers:redlib`
