@@ -1,6 +1,6 @@
 # Build args, PR bake chain (retired 2026-09-18), and cache mounts: see
 # AGENTS.md and design/forgejo-runner-workflow.md.
-# Anyone can build this locally: `docker build -f redlib/Dockerfile -t redlib .`
+# Anyone can build this locally: `docker build -t redlib .` (repo root).
 # (network access to github.com + crates.io; NO secrets needed — none are
 # used by this file). Image content = upstream `main` as of build time;
 # pin REDLIB_BRANCH to a commit/tag for a bit-for-bit reproducible build.

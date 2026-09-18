@@ -4,36 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "*/Dockerfile"
+      - "Dockerfile"
   workflow_dispatch:
-    inputs:
-      apps:
-        description: "Comma-separated list of applications to build (e.g., redlib)"
-        required: false
 
 jobs:
-  detect:
-    runs-on: redlib
-    outputs:
-      apps_to_build: ${{ steps.detect.outputs.apps_to_build }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          # Fetch the current and previous commit to ensure `github.event.before` is available
-          fetch-depth: 2
-
-      - name: Detect Applications to Build
-        id: detect
-        run: |
-          bash .forgejo/scripts/detect_apps.sh "${{ github.event.inputs.apps }}" "${{ github.event.before }}" "${{ github.sha }}" "${{ github.event_name }}"
-        env:
-          GITHUB_OUTPUT: $GITHUB_OUTPUT
-
   build:
-    needs: detect
     runs-on: redlib
-    if: ${{ needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -65,9 +41,9 @@ jobs:
           echo "docker login failed after 6 attempts" >&2
           exit 1
 
-      - name: Build and Push Images
+      - name: Build and Push Image
         run: |
           # Always prune after the build, success or failure, so the 10GB host
           # disk returns to baseline. (Keeps the BuildKit cargo caches.)
           trap 'docker image prune -a -f' EXIT
-          bash .forgejo/scripts/build_and_push.sh "${{ needs.detect.outputs.apps_to_build }}"
+          bash .forgejo/scripts/build_and_push.sh

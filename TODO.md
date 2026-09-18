@@ -28,4 +28,5 @@
 - [x] 於 `AGENTS.md` 記錄 PR bake 清單與 merge 機制（現已更新為退役狀態）
 - [x] 新增 MIT `LICENSE`（repo 自有檔 MIT；上游 redlib 保留 AGPL-3.0）
 - [x] README 重寫（拉預編譯映像 + `docker` / `docker-compose` 部署；映像參考統一小寫 `lawlietr`）；移除過期 `REDIS_URL` 描述（現行 redlib 無 Redis 支援）
+- [x] 建置檔移到根目錄（廢除 `redlib/` 子目錄與 multi-app 偵測機制；單 app 專屬，觸發路徑改 `Dockerfile`，映像名固定 `redlib`）
 - [x] commit 並推送至 `origin` 與 `codeberg` 兩個 remote

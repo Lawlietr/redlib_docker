@@ -8,6 +8,7 @@ This repository's own configuration files and scripts are licensed under the MIT
 
 ## Repository Layout
 
+- `Dockerfile` / `docker-compose.yaml` (repo root) — the redlib image build. Single-app repo; the former `redlib/` app subdirectory (dir name = image name) was retired 2026-09-18.
 - `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Records what is done and what is pending; keeps implementation details out. See the priority legend at the top of the file.
 - `design/` — **Implementation guidelines** for each task (deployment steps, config, gotchas). Detailed/longer explanations live here, referenced from `TODO.md`. Keep sensitive info (registration `uuid`/`token`, `CODEBERG_PAT`) out of these files; use placeholders and note where the real value must be entered.
 
@@ -16,13 +17,13 @@ This repository's own configuration files and scripts are licensed under the MIT
 ### Local Docker Build
 
 ```bash
-docker build -f redlib/Dockerfile -t redlib .
+docker build -t redlib .
 ```
 
 ### Build with Specific Redlib Branch
 
 ```bash
-docker build --build-arg REDLIB_BRANCH=main -f redlib/Dockerfile -t redlib .
+docker build --build-arg REDLIB_BRANCH=main -t redlib .
 ```
 
 ### Run the Container
@@ -34,7 +35,7 @@ docker run -p 8080:8080 -d --name redlib redlib
 ### Test Build (Builder Stage Only)
 
 ```bash
-docker build --target builder -f redlib/Dockerfile -t redlib-test .
+docker build --target builder -t redlib-test .
 ```
 
 ### Test Binary in Container
@@ -48,7 +49,7 @@ docker run --rm --entrypoint /redlib redlib-test --help
 ### Forgejo Actions (primary)
 
 `.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit):
-- **Trigger**: Changes to any `*/Dockerfile` file, or manual dispatch from the local Forgejo UI
+- **Trigger**: Changes to `Dockerfile`, or manual dispatch from the local Forgejo UI
 - **Platform**: linux/amd64
 - **Registry**: `codeberg.org/lawlietr/redlib:latest` (lowercase namespace; login with the `CODEBERG_PAT` repo secret, write:packages scope)
 - Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 10GB runner box clean
@@ -60,7 +61,7 @@ docker run --rm --entrypoint /redlib redlib-test --help
 - **Platforms**: linux/amd64 and linux/arm64
 - **Registry**: ghcr.io/{owner}/containers:{app-name}
 
-Manual trigger: GitHub Actions → "Build container images" → enter app names → "Run workflow"
+Manual trigger: GitHub Actions → "Build container images" → "Run workflow"
 
 ## Dockerfile Guidelines
 
@@ -119,7 +120,7 @@ Multi-stage build:
 
 ```bash
 # Validate build without push
-docker build --target builder -f redlib/Dockerfile -t redlib-test .
+docker build --target builder -t redlib-test .
 
 # Test binary execution
 docker run --rm --entrypoint /redlib redlib-test --help
@@ -138,7 +139,7 @@ docker logs redlib-test
 
 ```bash
 # Build for different architectures
-docker buildx build --platform linux/amd64,linux/arm64 -f redlib/Dockerfile -t redlib .
+docker buildx build --platform linux/amd64,linux/arm64 -t redlib .
 ```
 
 ## Code Style Guidelines

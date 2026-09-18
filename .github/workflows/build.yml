@@ -4,38 +4,13 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "*/Dockerfile"
+      - "Dockerfile"
   workflow_dispatch:
-    inputs:
-      apps:
-        description: "Comma-separated list of applications to build (e.g., caddy,patroni)"
-        required: false
 
 jobs:
-  detect:
+  build:
     # Only run on GitHub; skip when hosted on Codeberg/Forgejo.
     if: ${{ github.server_url == 'https://github.com' }}
-    runs-on: ubuntu-latest
-    outputs:
-      apps_to_build: ${{ steps.detect.outputs.apps_to_build }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          # Fetch the current and previous commit to ensure `github.event.before` is available
-          fetch-depth: 2
-
-      - name: Detect Applications to Build
-        id: detect
-        run: |
-          bash .github/scripts/detect_apps.sh "${{ github.event.inputs.apps }}" "${{ github.event.before }}" "${{ github.sha }}"
-        env:
-          GITHUB_OUTPUT: $GITHUB_OUTPUT
-
-  build:
-    needs: detect
-    # Only run on GitHub; skip when hosted on Codeberg/Forgejo.
-    if: ${{ github.server_url == 'https://github.com' && needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -54,6 +29,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Images
+      - name: Build and Push Image
         run: |
-          bash .github/scripts/build_and_push.sh "${{ needs.detect.outputs.apps_to_build }}"
+          bash .github/scripts/build_and_push.sh

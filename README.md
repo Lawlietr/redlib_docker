@@ -54,20 +54,19 @@ services:
 docker compose up -d
 ```
 
-> 若想從原始碼本地建置（不等 CI），可用 repo 內的
-> `redlib/docker-compose.yaml`：`cd redlib && docker compose up -d --build`
-> （該 compose 以本 repo 為 context 執行 `docker build`）。
+> 若想從原始碼本地建置（不等 CI），直接用根目錄的 `docker-compose.yaml`：
+> `docker compose up -d --build`（以本 repo 為 context build 根目錄 `Dockerfile`）。
 
 ### 3. 從原始碼建置（手動 build）
 
 ```bash
-docker build -f redlib/Dockerfile -t redlib .
+docker build -t redlib .
 docker run -p 8080:8080 -d --name redlib redlib
 
 # 指定 Redlib 分支（預設 main）
-docker build --build-arg REDLIB_BRANCH=main -f redlib/Dockerfile -t redlib .
+docker build --build-arg REDLIB_BRANCH=main -t redlib .
 # 指定上游 git 來源
-docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -f redlib/Dockerfile -t redlib .
+docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t redlib .
 ```
 
 > **可重現性說明**：Dockerfile 在 build 時 clone 上游 `main` 的**當下狀態**。
@@ -86,10 +85,16 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -f 
 
 ## CI/CD
 
-- 觸發：`*/Dockerfile` 變動或手動 "Run workflow"（可指定要 build 的 app）。
+- 觸發：`Dockerfile` 變動或手動 "Run workflow"。
 - 執行環境：本機自架 Forgejo Runner（`redlib` label），BuildKit + cargo cache mount（增量建置）。
 - 推送目標：`codeberg.org/lawlietr/redlib:<tag>`（amd64）。
 - 細節與故障排除：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
+
+## 故障排除
+
+- **建置失敗**：確保網路連線正常（build 會 clone upstream 與拉取 Rust 套件）；
+  boring-sys2（BoringSSL）需要 cmake + C 編譯器 + libclang，builder 映像已內建。
+- **容器無法啟動**：檢查 8080 端口是否被佔用；用 `docker logs redlib` 查日誌。
 
 ## 專案資訊
 

@@ -22,7 +22,7 @@
 目錄：`/opt/forgejo-runner/`（12 上）
 - `Dockerfile`：`FROM data.forgejo.org/forgejo/runner:13.1.0`（**Alpine 3.24.1**，runner 本体 45.2MB），
   `USER root` → `apk add --no-cache nodejs npm git docker-cli ca-certificates` → `USER 1000:1000`。
-  擴建後映像 **155MB**。**不需 rust/cargo**——redlib 的 cargo build 在 `redlib/Dockerfile` builder stage 容器內。
+  擴建後映像 **155MB**。**不需 rust/cargo**——redlib 的 cargo build 在 `Dockerfile`（repo 根目錄）builder stage 容器內。
 - `config/config.yaml`：`labels: ["redlib:host"]`、`capacity: 1`、`server.connections.forgejo`
   （`url: http://192.168.1.124:3000`、uuid、**`token_url: file:/run/runner-secrets/token.txt`**——token 走獨立檔，設定檔本身不含金鑰）。
 - `credentials/token.txt`：註冊 token（**機敏，600，owner uid 1000，不進 git**）。
@@ -66,7 +66,7 @@
 5. 常駐總佔用（系統 2.6G + runner ~0.2G）≈ 2.8G，**長期待機剩 ~7.2G**，安全（部署後實測剩 7.5G）。
 
 ### 編譯 cache（已定案 Tier 2，2026-09-18）
-BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區（`redlib/Dockerfile` 已改）：
+BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區（`Dockerfile` 已改）：
 - **registry cache**：`--mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo` 包住 `cargo fetch`
   （免重複下載 ~450 crates；常駐 ~0.5G）。
 - **target cache**：`cargo build` 再加 `--mount=type=cache,id=redlib-cargo-target,target=/cache/target`
@@ -100,7 +100,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 ## Workflow 修正（已推送上線，首次 build+push 成功）
 `.forgejo/workflows/build.yml` + `.forgejo/scripts/`：`runs-on: redlib`、podman→docker、
 登錄區 `codeberg.org/lawlietr/redlib:latest`、`disk_guard.sh` 守門、trap prune（見上紀律）。
-觸發：push 到 main 且 `*/Dockerfile` 有變、或手動 dispatch。
+觸發：push 到 main 且 `Dockerfile` 有變、或手動 dispatch。
 
 ## 遷移
 - **Forgejo 端零改動**：註冊資訊（uuid/token）在 runner 側（`/opt/forgejo-runner/`），
