@@ -1,3 +1,5 @@
+[English](README_EN.md)
+
 # Redlib Docker
 
 輕量級 Reddit 替代方案，透過 Docker 部署。
