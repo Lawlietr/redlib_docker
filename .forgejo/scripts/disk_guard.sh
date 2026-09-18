@@ -7,7 +7,10 @@ set -euo pipefail
 # so a build can never fill the disk.
 MIN_AVAIL_KB=2560000 # 2.5G
 
-avail_kb=$(df --output=avail -k / | tail -1 | tr -d '[:space:]')
+# NOTE: the job runs inside the Alpine/BusyBox runner image — `df --output`
+# is GNU-only and fails there; `df -P` (1024-byte blocks, POSIX columns) +
+# awk is the portable form. Field 4 = Available.
+avail_kb=$(df -P / | awk 'NR==2 {print $4}')
 echo "Disk free: ${avail_kb} KB (minimum: ${MIN_AVAIL_KB} KB)"
 
 if [ "$avail_kb" -lt "$MIN_AVAIL_KB" ]; then
