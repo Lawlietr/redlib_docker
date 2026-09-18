@@ -108,3 +108,12 @@
    本版本 API 建 secret 的欄位名是 `data`（非 `secret_value`）。
    驗證（12 機）：`curl -u lawlietr:<PAT> http://codeberg.org/v2/token?...` → 200 且
    `UserID` 非 -1；`docker login codeberg.org --username lawlietr` → Login Succeeded。
+5. **buildx / BuildKit（2026-09-18）**：Dockerfile 用 `RUN --mount=type=cache`（cargo registry + target
+   cache），需要 BuildKit。runner 容器（Alpine docker-cli 29.5.3）沒有 buildx plugin，
+   `DOCKER_BUILDKIT=1 docker build` 會報「BuildKit is enabled but the buildx component is missing」。
+   → 容器內 `apk add docker-cli-buildx`（0.34.1）後 **commit 成 `forgejo-runner-redlib:13.1.1`**，
+   compose 改用該 tag 並補 `group_add: ["990"]`（把之前重建時的 socket 群限固化進 compose）。
+   `build_and_push.sh` 內已 `export DOCKER_BUILDKIT=1`。
+6. **push 命名空間**：`build_and_push.sh` 的 image tag 不可用 `GITHUB_REPOSITORY_OWNER`
+   （本地 Forgejo owner = `lawliet`）；Registry 是 codeberg.org，命名空間為 Codeberg 帳號
+   `Lawlietr`（script 內已定 `CODEBERG_USER=Lawlietr`）。
