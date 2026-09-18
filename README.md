@@ -76,7 +76,6 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -f 
 |------|--------|------|
 | `PORT` | 8080 | 伺服器端口 |
 | `DOMAIN` | localhost | 域名設定 |
-| `REDIS_URL` | - | Redis 連線 (選填) |
 
 ## CI/CD
 

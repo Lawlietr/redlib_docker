@@ -107,7 +107,6 @@ Multi-stage build:
 
 - `PORT` - Server port (default: 8080)
 - `DOMAIN` - Domain name
-- `REDIS_URL` - Redis connection (optional)
 
 ### Current State
 
