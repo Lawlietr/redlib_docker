@@ -1,5 +1,7 @@
 # Build args, PR bake chain, and cache mounts: see AGENTS.md and
 # design/forgejo-runner-workflow.md.
+# Note: the build host must reach codeberg.org registry via its local
+# cbgproxy workaround (design/forgejo-runner-workflow.md, section 6).
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder
