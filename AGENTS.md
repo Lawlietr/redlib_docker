@@ -98,12 +98,8 @@ Multi-stage build:
 ### Redlib Source Management
 
 - Source: https://github.com/redlib-org/redlib.git
-- `REDLIB_BRANCH=main` so any upstream PR already merged into `main` is auto-included. Only still-OPEN PRs are baked manually (via the Dockerfile RUN chain below).
-- Baked PRs (still-open PRs fetched at build time and merged into `main`):
-  - Baseline: #506 (CMAF video format + `/vid/:id/cmaf/:size` proxy route), #509 (media/download handling)
-  - #521 (default post_sort applied immediately via `setting()`), #560 (user profile `/u/:name/s/:id` share links), #539 (lazy-load post images, drop SVG), #549 (`rich:video` support + CMAF regex, complements #506)
-- Bake mechanism (in `redlib/Dockerfile` builder RUN): clone → `git fetch origin pull/<n>/head:pr<N>` for each → `git checkout pr509` → `merge pr506` (plain) → `merge -X ours pr521 pr560 pr539 pr549`.
-  - `-X ours` is required for #521/#560/#539/#549: these branches predate `main`'s migration to the `wreq` HTTP/TLS backend, so `-X ours` keeps `main`'s current `client.rs` while applying each PR's own change. Verify the merged tree compiles (`cargo build --bin redlib`) before committing.
+- `REDLIB_BRANCH=main`. As of 2026-09-18 the formerly-baked PRs (#506, #521, #560, #539, #549) are all merged into upstream `main` (up to `8167e00` "Merge PR#549"), so no manual baking is needed — `main` alone contains everything. The old bake chain was retired for this reason (it had also rotted: PR-branch `Cargo.lock` checksum drift broke `cargo fetch`, and the pr509-based tree silently kept pre-wreq `client.rs`).
+- #509 (hyper-tls backend) was never needed on the wreq-based main — superseded by main's wreq migration; do not re-add it.
 - Build: `cargo build --release --locked --bin redlib`
 - Static binary for minimal footprint
 
@@ -168,8 +164,8 @@ This repository contains Dockerfiles and build scripts (no Rust source in this r
 
 ### Git Operations
 
-- Shallow clone: `--depth 300` (deep enough to reach the merge base of old-based PRs like #521/#549; `--depth 1` fails 3-way merges for those. Bump if `main` advances past the PR bases.)
-- PR merging: Use temporary refs (`pull/<n>/head:pr<N>`), merge in a fixed order (baseline first), `-X ours` for PRs based on pre-`wreq` `main`
+- Shallow clone: `--depth 1` (no PR baking anymore; bump only if a merge chain is re-introduced)
+- Verify upstream main compiles (`cargo build --bin redlib`) when bumping `REDLIB_BRANCH`
 - Set user email/name for git operations: `-c user.email="builder" -c user.name="builder"`
 
 ## External References

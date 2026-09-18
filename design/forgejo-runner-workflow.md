@@ -117,3 +117,14 @@
 6. **push 命名空間**：`build_and_push.sh` 的 image tag 不可用 `GITHUB_REPOSITORY_OWNER`
    （本地 Forgejo owner = `lawliet`）；Registry 是 codeberg.org，命名空間為 Codeberg 帳號
    `Lawlietr`（script 內已定 `CODEBERG_USER=Lawlietr`）。
+7. **Bake chain 退役（2026-09-18）**：Dockerfile 原來的 PR merge 鏈（#506/#509 baseline +
+   #521/#560/#539/#549，`--depth 300` + `-X ours`）已退役。原因：
+   - upstream main 已把 #506/#521/#560/#539/#549 全部 merge 進去（至 `8167e00`），
+     直接 build `main` 就包含全部改動（GitHub API 的 `state=open` 是過期快取，
+     以 git ancestry 為準：`git merge-base --is-ancestor prN main`）。
+   - 舊鏈用 pr509（hyper-tls，pre-wreq）當 base，`-X ours` 保留的是 pr509 的
+     `client.rs`/`Cargo.toml`/`Cargo.lock`，不是 main 的 wreq 版；pr509 的舊
+     `Cargo.lock` 撞上新 crates.io 的 checksum（`openssl-probe v0.1.6`），
+     `cargo fetch --locked` 直接失敗。
+   - #509（hyper-tls）被 main 的 wreq 遷移（#544）取代，不再需要 bake。
+   現在 Dockerfile 就是 `git clone --depth 1 --branch main` + `cargo build --release --locked`。

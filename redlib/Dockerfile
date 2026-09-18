@@ -18,19 +18,12 @@ RUN apk add --no-cache git make musl-dev perl
 
 WORKDIR /redlib
 
-RUN git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
-  && git fetch origin pull/506/head:pr506 \
-  && git fetch origin pull/509/head:pr509 \
-  && git fetch origin pull/521/head:pr521 \
-  && git fetch origin pull/560/head:pr560 \
-  && git fetch origin pull/539/head:pr539 \
-  && git fetch origin pull/549/head:pr549 \
-  && git checkout pr509 \
-  && git -c user.email="builder" -c user.name="builder" merge pr506 --no-ff -m "Merge PR#506" \
-  && git -c user.email="builder" -c user.name="builder" merge -X ours pr521 --no-ff -m "Merge PR#521" \
-  && git -c user.email="builder" -c user.name="builder" merge -X ours pr560 --no-ff -m "Merge PR#560" \
-  && git -c user.email="builder" -c user.name="builder" merge -X ours pr539 --no-ff -m "Merge PR#539" \
-  && git -c user.email="builder" -c user.name="builder" merge -X ours pr549 --no-ff -m "Merge PR#549"
+# NOTE: as of 2026-09-18 the formerly-baked PRs (#506, #521, #560, #539,
+# #549) have all been merged into upstream main (up to 8167e00 "Merge
+# PR#549"), so main alone contains everything. The old bake chain is
+# retired; REDLIB_BRANCH=main picks it up automatically.
+# (#509 hyper-tls is superseded by main's wreq migration — do not re-add.)
+RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" .
 
 # BuildKit cache mounts persist cargo state on the host between builds
 # (incremental rebuilds). Cache content is NOT part of the stage image,
