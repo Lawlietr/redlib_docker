@@ -4,7 +4,7 @@ set -euo pipefail
 APPS=$1
 REGISTRY=codeberg.org
 # Codeberg account owning the registry namespace (NOT the local Forgejo owner).
-CODEBERG_USER=Lawlietr
+CODEBERG_USER=lawlietr  # namespace must be lowercase (docker rule); login uses the real account name
 
 # Dockerfile uses RUN --mount=type=cache (cargo caches) which requires BuildKit
 # (docker 29 on the runner still defaults to the classic builder for `docker build`).
