@@ -13,8 +13,8 @@
 ## P1 待辦
 
 - [ ] **接線 redlib build workflow 並完成首次 build**
-  - 狀態：runner 已上線（label `redlib`）；cbgproxy workaround + socket 權限（`--group-add 990`）+ login 重試已就緒；推送即觸發 build。
-  - 前置（唯一阻斷）：`CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未確認；沒設的話 login 重試 6 次後仍會失敗**）。
+  - 狀態：runner 已上線（label `redlib`）；cbgproxy workaround + socket 權限（`--group-add 990`）+ login 重試已就緒。
+  - 2026-09-18：根本原因修正（login username 應為 Codeberg 帳號 `Lawlietr`、非本地 Forgejo owner）；`CODEBERG_PAT` 已設為 repo-level secret；12 機驗證 `docker login codeberg.org` 成功。待：首次完整 build+push。
   - 已定案：cargo cache **Tier 2**（registry + target cache mount，增量編譯）。
   - 實作要領：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
 

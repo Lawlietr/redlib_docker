@@ -44,15 +44,19 @@ jobs:
       - name: Login to Codeberg Container Registry
         env:
           CODEBERG_PAT: ${{ secrets.CODEBERG_PAT }}
+          CODEBERG_USERNAME: Lawlietr
         run: |
           if [ -z "$CODEBERG_PAT" ]; then
             echo "::error::CODEBERG_PAT secret is empty. Set it in repo Settings -> Actions -> Secrets (Codeberg PAT, write:packages)." >&2
             exit 1
           fi
+          # NOTE: username is the Codeberg account (Lawlietr), NOT the local
+          # Forgejo owner (lawliet) — the registry is codeberg.org.
           # The codeberg edge intermittently cancels Basic-auth token requests
           # from this host (kill window lasts a couple of minutes). Retry the
           # whole login with growing backoff until the window passes.
           for i in 1 2 3 4 5 6; do
+            if echo "$CODEBERG_PAT" | docker login codeberg.org --username "$CODEBERG_USERNAME" --password-stdin; then
             if echo "$CODEBERG_PAT" | docker login codeberg.org --username "${{ github.repository_owner }}" --password-stdin; then
               exit 0
             fi

@@ -99,3 +99,12 @@
    `/bin/forgejo-runner daemon -c /home/runner/.config/forgejo/runner/config.yaml`。
 3. 驗證路徑（12 機）：`docker exec -u 1000:1000 forgejo-runner docker login ...` 應走
    host daemon（journal 出現 3 欄位 endpoint）→ https 拒連 → http cbgproxy → token via curl。
+4. **真正的根本原因：login 用錯 username（2026-09-18 定案）**：workflow 原本用
+   `${{ github.repository_owner }}` 當 `docker login --username`——但 registry 是
+   **codeberg.org**，該 owner 是 **`Lawlietr`**；本地 Forgejo 的 owner 是 `lawliet`。
+   每次 login 都是 401（失敗認證），不斷觸發/延長 codeberg 邊緣的砍連線窗口，
+   與「重試不夠多」無關。→ login step 改用明確的 `CODEBERG_USERNAME: Lawlietr`。
+   另：`CODEBERG_PAT` secret 須為 **repo-level**（user-level 在 v15 的 API 有 500 問題）；
+   本版本 API 建 secret 的欄位名是 `data`（非 `secret_value`）。
+   驗證（12 機）：`curl -u lawlietr:<PAT> http://codeberg.org/v2/token?...` → 200 且
+   `UserID` 非 -1；`docker login codeberg.org --username lawlietr` → Login Succeeded。
