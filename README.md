@@ -14,7 +14,6 @@
 
 ```bash
 # 若映像設為私有，先登入：docker login codeberg.org
-# 注意：namespace 必須全小寫（docker 規則），是 lawlietr 而非 Lawlietr
 docker pull codeberg.org/lawlietr/redlib:latest
 
 docker run -d \
