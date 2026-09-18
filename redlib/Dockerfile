@@ -1,3 +1,5 @@
+# Build args, PR bake chain, and cache mounts: see AGENTS.md and
+# design/forgejo-runner-workflow.md.
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder
