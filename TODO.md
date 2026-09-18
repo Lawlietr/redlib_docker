@@ -13,10 +13,9 @@
 ## P1 待辦
 
 - [ ] **接線 redlib build workflow 並完成首次 build**
-  - 狀態：runner 已上線（label `redlib`，見下已完成項目）；待修正 `.forgejo/workflows/build.yml` 後觸發首次 build 驗證。
-  - 前置：`CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設**）。
-  - 拍板：**cargo cache tier**（Tier 1 只 cache 下載 / Tier 2 含 target 增量編譯，磁碟取捨見 design）。
-  - workflow 修正：登錄區 `registry.codeberg.org` → `codeberg.org`、`runs-on` → `redlib`、podman → docker、加磁碟守門與 push 後 prune（紀律見 design）。
+  - 狀態：runner 已上線（label `redlib`）；workflow 修正與 Tier 2 cache 已改完（待推送，推送即觸發首次 build）。
+  - 前置（唯一阻斷）：`CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設；設好再 push**，否則首次 build 會在 login 步失敗）。
+  - 已定案：cargo cache **Tier 2**（registry + target cache mount，增量編譯）。
   - 實作要領：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
 
 ## P2 待辦

@@ -23,18 +23,25 @@ RUN git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
   && git -c user.email="builder" -c user.name="builder" merge -X ours pr539 --no-ff -m "Merge PR#539" \
   && git -c user.email="builder" -c user.name="builder" merge -X ours pr549 --no-ff -m "Merge PR#549"
 
-RUN cargo fetch
+# BuildKit cache mounts persist cargo state on the host between builds
+# (incremental rebuilds). Cache content is NOT part of the stage image,
+# so the binary is copied out of the mounted target dir into dist/.
+RUN --mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo \
+    cargo fetch
 
-RUN TARGET=$(rustc -vV | grep host | cut -d' ' -f2) && \
-  mkdir -p .cargo && printf '%s\n' \
-  "[target.$TARGET]" \
-  'rustflags = ["-C", "target-feature=+crt-static"]' \
-  > .cargo/config.toml \
-  && cargo build --release --locked --bin redlib --target "$TARGET"
+RUN --mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo \
+    --mount=type=cache,id=redlib-cargo-target,target=/cache/target \
+    TARGET=$(rustc -vV | grep host | cut -d' ' -f2) && \
+    mkdir -p .cargo dist && printf '%s\n' \
+    "[target.$TARGET]" \
+    'rustflags = ["-C", "target-feature=+crt-static"]' \
+    > .cargo/config.toml \
+    && cargo build --release --locked --bin redlib --target "$TARGET" --target-dir /cache/target \
+    && cp "/cache/target/$TARGET/release/redlib" dist/redlib
 
 FROM scratch AS release
 
-COPY --from=builder /redlib/target/*/release/redlib /redlib
+COPY --from=builder /redlib/dist/redlib /redlib
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 USER 1000:1000

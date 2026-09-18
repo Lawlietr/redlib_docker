@@ -2,17 +2,19 @@
 set -euo pipefail
 
 APPS=$1
+REGISTRY=codeberg.org
 
 # Convert the comma-separated string back into an array
 IFS=',' read -ra apps <<< "$APPS"
 
 for app in "${apps[@]}"; do
 	if [[ -n "$app" ]]; then
-		echo "Building and pushing image for $app (podman, amd64)"
-		podman build \
+		image="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/${app}:latest"
+		echo "Building and pushing image for $app (docker, amd64)"
+		docker build \
 			--platform linux/amd64 \
-			-t "registry.codeberg.org/${GITHUB_REPOSITORY_OWNER}/containers:$app" \
+			-t "$image" \
 			-f "${app}/Dockerfile" "${app}"
-		podman push "registry.codeberg.org/${GITHUB_REPOSITORY_OWNER}/containers:$app"
+		docker push "$image"
 	fi
 done

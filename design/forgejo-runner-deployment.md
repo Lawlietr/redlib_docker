@@ -4,7 +4,8 @@
 > 上線，`labels: [redlib]`，poller 正常、註冊成功（`declared successfully`）。
 > **12 只有 10GB 磁碟，磁碟紀律是本方案核心。**
 > 產出的映像**只推送至 Codeberg 登錄區**（`codeberg.org`），本地 Forgejo 與 12 都不保留編譯產物（見下）。
-> 待辦：workflow 修正（見 `forgejo-runner-workflow.md`）+ 首次 build 驗證；cargo cache tier 待拍板。
+> 待辦：首次在 Forgejo 設 `CODEBERG_PAT` secret → 推送 workflow 修正 → 首次 build 驗證。
+> cargo cache 已定案 **Tier 2**（registry + target 雙 cache mount，增量編譯）。
 
 ## 目標
 12 上的 Forgejo Runner 執行 `.forgejo/workflows/build.yml`：docker build redlib → 推送 `codeberg.org/Lawlietr/redlib:latest` → **本地清理**。
@@ -64,14 +65,19 @@
 4. **不預拉 base、不設 sccache**（BuildKit cache mount 見下「編譯 cache」，待拍板）。
 5. 常駐總佔用（系統 2.6G + runner ~0.2G）≈ 2.8G，**長期待機剩 ~7.2G**，安全（部署後實測剩 7.5G）。
 
-### 編譯 cache（初期反覆 build 用，待拍板）
-BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區：
-- **Tier 1**：`RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo` 包住 `cargo fetch`
-  （免重複下載 ~450 crates；常駐 ~0.5G；重編仍為完整編譯 5-15 分）。
-- **Tier 2**：再對 `cargo build` 加 `--mount=type=cache,id=cargo-target,target=/redlib/target`
-  （**增量編譯**：改 merge 鏈重 build 只重編受影響 crate，秒~1 分；常駐 ~2.5-3.5G，待機剩 ~3-4G）。
-- 採 cache 後紀律修正：push 後清理**只跑 `docker image prune -a -f`，不跑 `docker builder prune`**（會刪 cache）；
-  以 `docker builder du` 監控，超預算一次性 `docker builder prune -af` 回收；守門門檻隨 tier 調整。
+### 編譯 cache（已定案 Tier 2，2026-09-18）
+BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區（`redlib/Dockerfile` 已改）：
+- **registry cache**：`--mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo` 包住 `cargo fetch`
+  （免重複下載 ~450 crates；常駐 ~0.5G）。
+- **target cache**：`cargo build` 再加 `--mount=type=cache,id=redlib-cargo-target,target=/cache/target`
+  + `--target-dir /cache/target`（**增量編譯**：改 merge 鏈重 build 只重編受影響 crate，秒~1 分；
+  常駐 ~2.5-3.5G）。
+- **關鍵陷阱**：cache mount 的內容**不屬於** stage 映像——所以 build 後必須
+  `cp /cache/target/.../redlib dist/redlib`，release stage 改 `COPY --from=builder /redlib/dist/redlib`。
+- 紀律（已落地到 workflow）：build 前 `disk_guard.sh`（可用 < **2.5G** 即中止，Tier 2 常駐 cache 下門檻）；
+  build step 用 `trap 'docker image prune -a -f' EXIT` 保證成功/失敗都清 layer；
+  **絕不跑 `docker builder prune`**（會刪 cargo cache）；以 `docker builder du` 監控，
+  超預算時一次性 `docker builder prune -af` 回收。
 - 另注意：`git clone` 層被 docker 層 cache 住時**不會**抓上游 redlib main 的新 commit（要 `--no-cache` 或 cache-bust ARG）；
   對測試自己的 PR bake 反而是優點（決定論）。
 
@@ -91,9 +97,10 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 - **勿寫入版本庫。** 舊機制（`register` 命令流程）的 token 已棄用，勿再用。
 - `CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設，首次 build 前必須完成**）。
 
-## Workflow 同步修正（部署時一起做）
-見 `forgejo-runner-workflow.md`：`runs-on: redlib`、podman→docker、登錄區 `codeberg.org/Lawlietr/redlib:latest`；
-另加**磁碟守門**與 **push 後 prune** 步驟（紀律 1-3）。
+## Workflow 修正（已改待推送）
+`.forgejo/workflows/build.yml` + `.forgejo/scripts/`：`runs-on: redlib`、podman→docker、
+登錄區 `codeberg.org/Lawlietr/redlib:latest`、`disk_guard.sh` 守門、trap prune（見上紀律）。
+觸發：push 到 main 且 `*/Dockerfile` 有變、或手動 dispatch。
 
 ## 遷移
 - **Forgejo 端零改動**：註冊資訊（uuid/token）在 runner 側（`/opt/forgejo-runner/`），

@@ -13,7 +13,7 @@ on:
 
 jobs:
   detect:
-    runs-on: codeberg-medium
+    runs-on: redlib
     outputs:
       apps_to_build: ${{ steps.detect.outputs.apps_to_build }}
     steps:
@@ -32,15 +32,21 @@ jobs:
 
   build:
     needs: detect
-    runs-on: codeberg-medium
+    runs-on: redlib
     if: ${{ needs.detect.outputs.apps_to_build != '' && needs.detect.outputs.apps_to_build != 'No apps detected.' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Disk Guard (10GB host)
+        run: bash .forgejo/scripts/disk_guard.sh
+
       - name: Login to Codeberg Container Registry
-        run: echo "${{ secrets.CODEBERG_PAT }}" | podman login registry.codeberg.org --username "${{ github.repository_owner }}" --password-stdin
+        run: echo "${{ secrets.CODEBERG_PAT }}" | docker login codeberg.org --username "${{ github.repository_owner }}" --password-stdin
 
       - name: Build and Push Images
         run: |
+          # Always prune after the build, success or failure, so the 10GB host
+          # disk returns to baseline. (Keeps the BuildKit cargo caches.)
+          trap 'docker image prune -a -f' EXIT
           bash .forgejo/scripts/build_and_push.sh "${{ needs.detect.outputs.apps_to_build }}"
