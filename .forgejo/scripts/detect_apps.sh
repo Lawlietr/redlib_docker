@@ -4,6 +4,7 @@ set -euo pipefail
 MANUAL_APPS=$1
 BEFORE_REF=$2
 CURRENT_SHA=$3
+EVENT_NAME=${4:-push}
 OUTPUT_FILE="apps_to_build"
 
 # Ensure a clean output file
@@ -15,6 +16,12 @@ if [[ -n "$MANUAL_APPS" ]]; then
 	for app in "${apps[@]}"; do
 		echo "$app" >> "$OUTPUT_FILE"
 	done
+elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+	# Manual trigger without input: build every app in the tree
+	echo "Manual trigger without input. Building all detected apps."
+	while IFS= read -r file; do
+		echo "$(basename "$(dirname "$file")")" >> "$OUTPUT_FILE"
+	done < <(git ls-files '*/Dockerfile')
 else
 	# Automatic trigger: Detect changed Dockerfiles
 	if [[ -z "$BEFORE_REF" ]]; then
