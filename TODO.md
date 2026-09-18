@@ -8,7 +8,16 @@
 - **P2** 中 —— 排程進行
 - **P3** 低 —— 順便處理
 
+## 維護規則
+- 本檔是「活板」：待辦（P0–P3）永遠在頂部；已完成只放在下方「近期完成」。
+- 「近期完成」保留最近 **10 筆**；超過的剪掉。已完成工作的完整記錄在 `git history` 與 `design/` 裡，不需在此重複貼。
+- 每次工作結束時 prune 一次。
+
 ---
+
+## P0 待辦
+
+- （目前無）
 
 ## P1 待辦
 
@@ -18,7 +27,13 @@
 
 - （目前無）
 
-## 已完成
+## P3 待辦
+
+- （目前無）
+
+---
+
+## 近期完成（保留最近 10 筆）
 
 - [x] 接線 redlib build workflow 並完成首次 build（2026-09-18：CI 首次完整 build+push 到 `codeberg.org/lawlietr/redlib:latest` 成功，映像公開可匿名 pull；runner 12 機、docker+BuildKit、cargo cache Tier 2）
 - [x] 部署 Forgejo Runner（Docker 形式，12 機 192.168.1.12，`/opt/forgejo-runner/` 單機 compose，label `redlib:host`，2026-09-18 上線）；產物只推 `codeberg.org`，本地 Forgejo/12 不保留
