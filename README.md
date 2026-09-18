@@ -3,8 +3,9 @@
 輕量級 Reddit 替代方案，透過 Docker 部署。
 
 - 建置時直接 clone upstream `main`（https://github.com/redlib-org/redlib），
-  曾手動 bake 的 PR（#506/#509/#521/#560/#539/#549）現已全部合併進 upstream main，
-  無需再 bake。
+  曾手動 bake 的 PR（#506/#509/#521/#560/#539/#549）現已無需 bake：
+  #506/#521/#560/#539/#549 已合併進 upstream main；#509（hyper-tls）則被
+  main 的 wreq 遷移（#544，模擬常見 TLS 指紋）取代。
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
 - CI 自動建置並推送預編譯映像到 **`codeberg.org/lawlietr/redlib:latest`**。
 
