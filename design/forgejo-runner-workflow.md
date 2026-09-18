@@ -47,3 +47,39 @@
 - `.github/` 那份是 GitHub ghcr.io 的 guarded 備援（`if: github.server_url == 'https://github.com'`），
   推到 `ghcr.io`，**不用動**。
 - 只有 `.forgejo/workflows/build.yml` 需要上面四項修正。
+
+## 6. codeberg.org 連線 workaround（12 機專用，2026-09-18）
+
+### 症狀
+- 12 機的 **docker daemon（Go 1.26）連 `codeberg.org` 一律 `unexpected EOF`**：
+  TLS 握手成功、server 回資料後連線被邊緣直接砍（tcpdump 證實 RST/FIN）。
+- 同機 `curl` 與独立 Go 客戶端（1.26/1.27）直連 codeberg 都正常；拉 docker.io 也正常。
+  → 問題限定在「docker daemon 對 codeberg.org」這條路徑（邊緣對其連線行為有問題，可回報給 codeberg）。
+- 曾試過無效：關 IPv6（`net.ipv6.conf.all.disable_ipv6=1`，本機 v6 路徑本來就壞）、
+  `GODEBUG=tlsmlkem=0`、`GODEBUG=http2client=0`、改 UA。
+- 另觀測：對 `/v2/token` 帶 **Basic auth** 的請求會被邊緣砍（h2 回 `stream CANCEL`、
+  h1 回 `unexpected EOF`）；無 auth 的 ping 正常。curl 帶同樣 Basic auth 反而正常。
+  真實 PAT 的 login 行為待驗證（若有效憑證也被砍，需再研究）。
+
+### Workaround：本機反向代理 `cbgproxy`
+利用 daemon 的 https→http 探測回落 + `/etc/hosts` 導流：
+
+1. `/etc/hosts`：`127.0.0.1 codeberg.org`
+2. `cbgproxy`（Go 反向代理，systemd 服務）：
+   - 聽 `127.0.0.1:80`，轉發 `https://codeberg.org`（直撥邊緣 IP `217.197.84.140`，SNI=`codeberg.org`）。
+   - `ModifyResponse` 把 `WWW-Authenticate` 的 Bearer realm 由 `https://` 改寫為 `http://`，
+     讓 token 交換也留在代理內。
+   - 代理本體的 Go 客戶端連 codeberg 正常（已證實）。
+3. daemon 流程變成：`https://codeberg.org`（127.0.0.1:443 拒連）→ 回落
+   `http://codeberg.org`（127.0.0.1:80 代理）→ 代理 TLS 轉發上游。
+
+### 12 機上的檔案
+- 原始碼：`/opt/cbgproxy/main.go`（副本存於 `design/cbgproxy-main.go`，無機敏資訊）
+- 二進位：`/opt/cbgproxy/cbgproxy`（Go 1.26.8 編譯）
+- 服務：`/etc/systemd/system/cbgproxy.service`（`Restart=always`，已 enable）
+- 工具鏈：`/tmp/g126/go`（Go 1.26.8，重建代理用；/tmp 重開機會清，需時重裝）
+
+### 注意
+- `/etc/hosts` 導流只影響 12 機 host 層對 `codeberg.org` 的解析（containers 用自己的 DNS，不受影響）。
+- 若 codeberg 邊緣 IP 變更（非固定），需更新代理內的 `upstreamIP`。
+- 此 workaround 與 workflow 本身無關；CI 側完全無感。
