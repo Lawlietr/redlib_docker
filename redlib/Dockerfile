@@ -6,6 +6,7 @@
 # Runner container needs --group-add <docker-gid> so job docker login
 # reaches the daemon (client-side fallback hits the edge directly).
 # Login step now retries 6x across codeberg edge kill windows.
+# Login step also fails fast with a clear error if CODEBERG_PAT is unset.
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder

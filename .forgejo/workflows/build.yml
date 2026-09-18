@@ -45,6 +45,10 @@ jobs:
         env:
           CODEBERG_PAT: ${{ secrets.CODEBERG_PAT }}
         run: |
+          if [ -z "$CODEBERG_PAT" ]; then
+            echo "::error::CODEBERG_PAT secret is empty. Set it in repo Settings -> Actions -> Secrets (Codeberg PAT, write:packages)." >&2
+            exit 1
+          fi
           # The codeberg edge intermittently cancels Basic-auth token requests
           # from this host (kill window lasts a couple of minutes). Retry the
           # whole login with growing backoff until the window passes.
