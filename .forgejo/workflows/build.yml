@@ -57,7 +57,6 @@ jobs:
           # whole login with growing backoff until the window passes.
           for i in 1 2 3 4 5 6; do
             if echo "$CODEBERG_PAT" | docker login codeberg.org --username "$CODEBERG_USERNAME" --password-stdin; then
-            if echo "$CODEBERG_PAT" | docker login codeberg.org --username "${{ github.repository_owner }}" --password-stdin; then
               exit 0
             fi
             echo "login attempt $i failed, retrying in $((i*15))s..."
