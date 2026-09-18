@@ -70,6 +70,13 @@ docker build --build-arg REDLIB_BRANCH=main -f redlib/Dockerfile -t redlib .
 docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -f redlib/Dockerfile -t redlib .
 ```
 
+> **可重現性說明**：Dockerfile 在 build 時 clone 上游 `main` 的**當下狀態**。
+> 我們推送的 `latest` 是 2026-09-18 以上游 `main`（`8167e00`）build 的，
+> 你自己 build 會得到「同一套構建流程 + 當天的 redlib 版本」，
+> 與我們的映像不保證 bit-for-bit 相同。需要固定版本時請用
+> `--build-arg REDLIB_BRANCH=<commit 或 tag>` pin 住。
+> 另外 build 產物是本機 native 架構（CI 推 amd64；arm64 機器 build 出 arm64）。
+
 ## 環境變數
 
 | 變數 | 預設值 | 說明 |

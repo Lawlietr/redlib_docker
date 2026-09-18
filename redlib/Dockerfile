@@ -1,12 +1,19 @@
-# Build args, PR bake chain, and cache mounts: see AGENTS.md and
-# design/forgejo-runner-workflow.md.
-# Note: the build host must reach codeberg.org registry via its local
-# cbgproxy workaround (design/forgejo-runner-workflow.md, section 6).
-# Manual "Run workflow" (no input) now builds all apps in the tree.
-# Runner container needs --group-add <docker-gid> so job docker login
-# reaches the daemon (client-side fallback hits the edge directly).
-# Login step now retries 6x across codeberg edge kill windows.
-# Login step also fails fast with a clear error if CODEBERG_PAT is unset.
+# Build args, PR bake chain (retired 2026-09-18), and cache mounts: see
+# AGENTS.md and design/forgejo-runner-workflow.md.
+# Anyone can build this locally: `docker build -f redlib/Dockerfile -t redlib .`
+# (network access to github.com + crates.io; NO secrets needed — none are
+# used by this file). Image content = upstream `main` as of build time;
+# pin REDLIB_BRANCH to a commit/tag for a bit-for-bit reproducible build.
+#
+# The lines below are OUR-CI-specific (self-hosted runner pushing to
+# codeberg.org) and are NOT needed for a local build:
+# - the build host reaches the codeberg.org registry only via its local
+#   cbgproxy workaround (design/forgejo-runner-workflow.md, section 6);
+# - manual "Run workflow" (no input) builds all apps in the tree;
+# - the runner container needs --group-add <docker-gid> so the job's
+#   `docker login` reaches the daemon (client-side fallback hits the edge);
+# - the login step retries 6x across codeberg edge kill windows and fails
+#   fast with a clear error if CODEBERG_PAT is unset.
 # Builder is glibc-based (slim bookworm), NOT alpine/musl: wreq (upstream
 # redlib's current HTTP/TLS stack) pulls boring-sys2 (BoringSSL), whose
 # build script needs cmake + a C compiler + libclang, and bindgen dlopens
