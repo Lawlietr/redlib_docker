@@ -10,7 +10,7 @@
 ## 1. 登錄區網址（重要）
 - 舊：`registry.codeberg.org/Lawlietr/containers:redlib`
 - **問題**：`registry.codeberg.org` 現為 **NXDOMAIN**（本機與公共 DNS 1.1.1.1 均解析不到）。
-- **新**：`codeberg.org/Lawlietr/redlib:latest`
+- **新**：`codeberg.org/lawlietr/redlib:latest`
 - **查證**：`curl https://codeberg.org/v2/` 回
   `{"errors":[{"code":"UNAUTHORIZED"}]}`（HTTP 401）—— 這是標準 Docker Registry v2 的無身份回應，
   故 `codeberg.org` 即 Codeberg 現行登錄區。
@@ -38,7 +38,7 @@
 4. **不設持久 cache**：不加 BuildKit cache mount / sccache，每次 build 從零，磁碟可預測。
 
 ## 推送目標
-- `codeberg.org/Lawlietr/redlib:latest`（tag 視需要調整）。
+- `codeberg.org/lawlietr/redlib:latest`（tag 視需要調整）。
 - 注意：此處推至 **public codeberg.org** 登錄區；**本地 Forgejo 的 registry 完全不使用**，
   編譯產物不會留在本地 Forgejo（它只當 git host + CI 調度）。
 - 12 機上 build 後的本地映像亦於 push 後立即 prune（紀律 2）→ 產物只存在 codeberg.org。

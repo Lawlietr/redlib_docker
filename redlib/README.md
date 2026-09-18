@@ -4,7 +4,7 @@ Redlib 是一個輕量級的 Reddit 替代方案，專注於隱私和速度。
 
 ## 快速開始
 
-預編譯映像（CI 自動推送）：`codeberg.org/Lawlietr/redlib:latest`，
+預編譯映像（CI 自動推送）：`codeberg.org/lawlietr/redlib:latest`，
 部署方式見 repo 根目錄 `README.md`。
 
 本目錄的 `docker-compose.yaml` 用於**本地從原始碼建置**：

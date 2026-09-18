@@ -6,7 +6,7 @@
   曾手動 bake 的 PR（#506/#509/#521/#560/#539/#549）現已全部合併進 upstream main，
   無需再 bake。
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
-- CI 自動建置並推送預編譯映像到 **`codeberg.org/Lawlietr/redlib:latest`**。
+- CI 自動建置並推送預編譯映像到 **`codeberg.org/lawlietr/redlib:latest`**。
 
 ## 部署方式
 
@@ -14,14 +14,15 @@
 
 ```bash
 # 若映像設為私有，先登入：docker login codeberg.org
-docker pull codeberg.org/Lawlietr/redlib:latest
+# 注意：namespace 必須全小寫（docker 規則），是 lawlietr 而非 Lawlietr
+docker pull codeberg.org/lawlietr/redlib:latest
 
 docker run -d \
   --name redlib \
   -p 8080:8080 \
   -e DOMAIN=localhost \
   --restart unless-stopped \
-  codeberg.org/Lawlietr/redlib:latest
+  codeberg.org/lawlietr/redlib:latest
 ```
 
 啟動後可透過 `http://localhost:8080` 存取。
@@ -32,7 +33,7 @@ docker run -d \
 # docker-compose.yml
 services:
   redlib:
-    image: codeberg.org/Lawlietr/redlib:latest
+    image: codeberg.org/lawlietr/redlib:latest
     container_name: redlib
     ports:
       - "8080:8080"
@@ -82,7 +83,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -f 
 
 - 觸發：`*/Dockerfile` 變動或手動 "Run workflow"（可指定要 build 的 app）。
 - 執行環境：本機自架 Forgejo Runner（`redlib` label），BuildKit + cargo cache mount（增量建置）。
-- 推送目標：`codeberg.org/Lawlietr/redlib:<tag>`（amd64）。
+- 推送目標：`codeberg.org/lawlietr/redlib:<tag>`（amd64）。
 - 細節與故障排除：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
 
 ## 專案資訊

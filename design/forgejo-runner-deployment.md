@@ -8,7 +8,7 @@
 > cargo cache 已定案 **Tier 2**（registry + target 雙 cache mount，增量編譯）。
 
 ## 目標
-12 上的 Forgejo Runner 執行 `.forgejo/workflows/build.yml`：docker build redlib → 推送 `codeberg.org/Lawlietr/redlib:latest` → **本地清理**。
+12 上的 Forgejo Runner 執行 `.forgejo/workflows/build.yml`：docker build redlib → 推送 `codeberg.org/lawlietr/redlib:latest` → **本地清理**。
 
 ## 已查證環境（12，唯讀）
 - Ubox-02，Ubuntu 24.04.5，x86_64，**5C / 10G RAM**（可用 ~9.9G）。
@@ -87,7 +87,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 ## 「只上傳 Codeberg，本地不放產物」——可行且即現行設計
 - 本地 Forgejo 只當 **git host + CI 調度**，它的 container registry（packages 功能）**完全不使用**，
   任何編譯產物都不會落在那裡。
-- Runner 在 12 上 build 完，**直接 `docker push codeberg.org/Lawlietr/redlib:latest`**，
+- Runner 在 12 上 build 完，**直接 `docker push codeberg.org/lawlietr/redlib:latest`**，
   push 完即 prune——12 上也只剩 runner 本身的映像。
 - 即：**產物只存在 codeberg.org**；12 只有「build 期間的瞬時占用」，Forgejo 端零占用。
 
@@ -99,7 +99,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 
 ## Workflow 修正（已改待推送）
 `.forgejo/workflows/build.yml` + `.forgejo/scripts/`：`runs-on: redlib`、podman→docker、
-登錄區 `codeberg.org/Lawlietr/redlib:latest`、`disk_guard.sh` 守門、trap prune（見上紀律）。
+登錄區 `codeberg.org/lawlietr/redlib:latest`、`disk_guard.sh` 守門、trap prune（見上紀律）。
 觸發：push 到 main 且 `*/Dockerfile` 有變、或手動 dispatch。
 
 ## 遷移
@@ -110,7 +110,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 ## 部署後驗證
 1. Forgejo UI 的 runner 名單 online。
 2. 手動觸發 workflow → checkout → 磁碟守門通過 → docker build → push → prune。
-3. `codeberg.org/Lawlietr/redlib:latest` 在 Codeberg package 頁面可見；
+3. `codeberg.org/lawlietr/redlib:latest` 在 Codeberg package 頁面可見；
    事後 `df -h /` 與部署前持平（±0.1G 以內）。
 
 ## 機敏資訊處理（切記）
