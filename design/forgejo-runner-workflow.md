@@ -2,7 +2,7 @@
 
 ## 背景
 現行 `.forgejo/workflows/build.yml` 為 Codeberg 託管 runner（podman / `codeberg-medium` /
-`registry.codeberg.org`）設計，與本機自架 Runner 不符。部署時需一併修正以下三點（外加認證）。
+`registry.codeberg.org`）設計，與 12 機自架 Runner 不符。部署時需一併修正以下四點（外加認證與磁碟紀律）。
 
 ## 1. 登錄區網址（重要）
 - 舊：`registry.codeberg.org/Lawlietr/containers:redlib`
@@ -18,8 +18,8 @@
 
 ## 3. 建構 / 推送工具
 - 舊：podman。
-- 本機：有 docker、無 podman → 改用 **docker**（`docker login` / `docker build` / `docker push`）。
-- docker build/push 直接連本機 daemon，不需 DinD。
+- 12 機：有 docker、無 podman → 改用 **docker**（`docker login` / `docker build` / `docker push`）。
+- docker build/push 直接連本機 daemon（runner 容器掛 `/var/run/docker.sock`），不需 DinD。
 
 ## 4. 認證
 - `docker login codeberg.org -u <user> -p <PAT>`。
@@ -27,10 +27,18 @@
 - secret 名稱：`CODEBERG_PAT`，設於**本地 Forgejo** 的 redlib_docker repo secrets（workflow 在本地 Forgejo 執行）。
 - **機敏，勿寫入版本庫。**
 
+## 5. 磁碟紀律（12 機只有 10GB，必做）
+見 `forgejo-runner-deployment.md` 的磁碟預算。workflow 內落地為：
+1. **build 前守門**：`df --output=avail -k / | tail -1`，可用 < 6144000 KB（6G）→ 直接 fail（訊息：磁碟空間不足，中止 build）。
+2. **push 後清理**：`docker image prune -a -f && docker builder prune -f`（builder stage、base pull、最終映像全清）。
+3. **失敗路徑同樣清理**：用 `trap`（或 `if/else` 兩路徑都 prune）保證 build/push 失敗不殘留。
+4. **不設持久 cache**：不加 BuildKit cache mount / sccache，每次 build 從零，磁碟可預測。
+
 ## 推送目標
 - `codeberg.org/Lawlietr/redlib:latest`（tag 視需要調整）。
-- 注意：此處推至 **public codeberg.org** 登錄區。
-- 若日後要改推至「本地 Forgejo 自身的登錄區」，網址與認證不同，需另行處理（不在此流程內）。
+- 注意：此處推至 **public codeberg.org** 登錄區；**本地 Forgejo 的 registry 完全不使用**，
+  編譯產物不會留在本地 Forgejo（它只當 git host + CI 調度）。
+- 12 機上 build 後的本地映像亦於 push 後立即 prune（紀律 2）→ 產物只存在 codeberg.org。
 
 ## 與 `.github/workflows/build.yml` 的關係
 - `.github/` 那份是 GitHub ghcr.io 的 guarded 備援（`if: github.server_url == 'https://github.com'`），
