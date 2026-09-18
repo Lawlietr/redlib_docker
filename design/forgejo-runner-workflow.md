@@ -128,3 +128,41 @@
      `cargo fetch --locked` 直接失敗。
    - #509（hyper-tls）被 main 的 wreq 遷移（#544）取代，不再需要 bake。
    現在 Dockerfile 就是 `git clone --depth 1 --branch main` + `cargo build --release --locked`。
+
+## 7. Builder 從 alpine/musl 改 glibc 靜態建置（2026-09-18 定案）
+
+**症狀**：CI build 掛在 `boring-sys2`（wreq 的 BoringSSL）build script：
+`failed to find tool "c++"` / `Dynamic loading not supported`（bindgen dlopen libclang）。
+
+**根因**：musl 靜態編譯的 build script 無法 `dlopen` libclang（bindgen 0.72 固定用
+`runtime` feature）；alpine 也沒有 musl-tools（glibc 下交叉編譯）與
+`x86_64-linux-musl-g++`。musl 路線無解。
+
+**定案**：builder 改 `rust:1.98-slim-bookworm`（glibc，bindgen 的 dlopen 正常），
+build deps：`build-essential cmake clang libclang-dev perl pkg-config git ca-certificates`。
+產出**全靜態 glibc binary**，release stage 維持 `scratch`：
+
+```
+cargo rustc --release --locked --bin redlib --target-dir ... -- \
+    -C target-feature=+crt-static \
+    -C relocation-model=static \
+    -C link-args=-static
+```
+
+**坑**（實測驗證）：
+1. 靜態 flag **只能**透過 `cargo rustc -- ...` 給最終 crate。放進
+   `.cargo/config.toml` 的 `[target.x86_64-unknown-linux-gnu] rustflags`（或 RUSTFLAGS env）
+   會連 proc-macro crates 一起套用 → `cannot produce proc-macro ... does not support
+   these crate types`（cargo 把 host triple 的 target section 當成 cross target）。
+2. glibc 靜態 CRT 不兼容 PIE → 缺 `-C relocation-model=static` 會在 link 階段
+   掛在 `crtbeginT.o`。
+3. `link-args=-static` 用 glibc 自帶的 `libc.a`（bookworm 的 glibc 套件就有，
+   不需額外套件）。BoringSSL 是 staticlib、redlib 不靠 OpenSSL/NSS，全靜態可行。
+
+**驗證（2026-09-18）**：`docker build` 全綠；binary 13.3MB、`readelf -d` 無
+dynamic section；scratch 映像 13.5MB；容器內 `Redlib 0.36.0` 啟動並對
+`/` 回 HTTP 200（實際抓到 Reddit 內容）。
+
+**磁碟影響（12 機 10GB）**：bookworm builder 映像層比 alpine 大（~2.5GB vs ~1.6GB），
+但 build 完 `docker image prune -a` 會清掉；持久的是 BuildKit cache mounts
+（registry + target，增量編譯用，~3–4GB）。若磁碟吃緊：`docker builder prune`。

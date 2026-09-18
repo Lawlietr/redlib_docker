@@ -7,14 +7,21 @@
 # reaches the daemon (client-side fallback hits the edge directly).
 # Login step now retries 6x across codeberg edge kill windows.
 # Login step also fails fast with a clear error if CODEBERG_PAT is unset.
-ARG ALPINE_VERSION=3.22
-
-FROM rust:alpine${ALPINE_VERSION} AS builder
+# Builder is glibc-based (slim bookworm), NOT alpine/musl: wreq (upstream
+# redlib's current HTTP/TLS stack) pulls boring-sys2 (BoringSSL), whose
+# build script needs cmake + a C compiler + libclang, and bindgen dlopens
+# libclang — impossible in the static musl build-script environment.
+# The final binary is fully static (see build flags below), so the release
+# stage stays `scratch`.
+FROM rust:1.98-slim-bookworm AS builder
 
 ARG REDLIB_SRC=https://github.com/redlib-org/redlib.git
 ARG REDLIB_BRANCH=main
 
-RUN apk add --no-cache git make musl-dev perl
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential cmake clang libclang-dev perl pkg-config git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /redlib
 
@@ -31,15 +38,22 @@ RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" .
 RUN --mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo \
     cargo fetch
 
+# Fully static glibc binary. The static flags are passed ONLY to the final
+# crate via `cargo rustc -- ...` — putting them in .cargo/config.toml
+# `[target.<host>] rustflags` (or the RUSTFLAGS env) also applies them to
+# proc-macro crates and breaks the build ("cannot produce proc-macro" / PIE
+# link errors).
+#   +crt-static           statically link the C runtime
+#   relocation-model=static  glibc's static CRT is not PIE-compatible
+#   link-args=-static     link libc.a (glibc ships /usr/lib/x86_64-linux-gnu/libc.a)
 RUN --mount=type=cache,id=redlib-cargo-registry,target=/root/.cargo \
     --mount=type=cache,id=redlib-cargo-target,target=/cache/target \
-    TARGET=$(rustc -vV | grep host | cut -d' ' -f2) && \
-    mkdir -p .cargo dist && printf '%s\n' \
-    "[target.$TARGET]" \
-    'rustflags = ["-C", "target-feature=+crt-static"]' \
-    > .cargo/config.toml \
-    && cargo build --release --locked --bin redlib --target "$TARGET" --target-dir /cache/target \
-    && cp "/cache/target/$TARGET/release/redlib" dist/redlib
+    cargo rustc --release --locked --bin redlib --target-dir /cache/target -- \
+        -C target-feature=+crt-static \
+        -C relocation-model=static \
+        -C link-args=-static \
+    && mkdir -p dist \
+    && cp /cache/target/release/redlib dist/redlib
 
 FROM scratch AS release
 
