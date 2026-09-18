@@ -1,0 +1,51 @@
+# Lightweight registry-namespace probe (not a build).
+#
+# Purpose: verify the exact repository path the Codeberg registry accepts.
+# Docker requires lowercase repository names, while the Codeberg account is
+# "Lawlietr" (mixed case), so the namespace must be the lowercase form
+# (default input: "lawlietr"). Login uses the real account name.
+#
+# Trigger: Actions -> "Codeberg registry namespace test" -> Run workflow,
+# optionally with input "namespace" (e.g. "lawlietr").
+
+name: Codeberg registry namespace test
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: "Registry namespace to probe (lowercase)"
+        required: false
+        default: "lawlietr"
+
+jobs:
+  test:
+    runs-on: redlib
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Probe namespace (docker login + push hello-world)
+        env:
+          CODEBERG_PAT: ${{ secrets.CODEBERG_PAT }}
+          CODEBERG_USERNAME: Lawlietr
+        run: |
+          set -euo pipefail
+          NS="${{ inputs.namespace }}"
+          case "$NS" in
+            *[!a-z0-9._-]*) echo "namespace must be lowercase: $NS"; exit 1;;
+          esac
+          echo "Probing codeberg.org/$NS/registry-test"
+          if ! echo "$CODEBERG_PAT" | docker login codeberg.org \
+              --username "$CODEBERG_USERNAME" --password-stdin; then
+            echo "LOGIN FAILED (bad PAT / wrong username / rate-limit window?)"
+            exit 1
+          fi
+          docker run --rm -d --name regtest hello-world >/dev/null
+          docker tag hello-world "codeberg.org/$NS/registry-test:latest"
+          if docker push "codeberg.org/$NS/registry-test:latest"; then
+            echo "SUCCESS: codeberg.org/$NS is a valid push target"
+          else
+            echo "PUSH FAILED for codeberg.org/$NS"
+            exit 1
+          fi
