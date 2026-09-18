@@ -3,6 +3,8 @@
 # Note: the build host must reach codeberg.org registry via its local
 # cbgproxy workaround (design/forgejo-runner-workflow.md, section 6).
 # Manual "Run workflow" (no input) now builds all apps in the tree.
+# Runner container needs --group-add <docker-gid> so job docker login
+# reaches the daemon (client-side fallback hits the edge directly).
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder
