@@ -1,8 +1,10 @@
 # Forgejo Runner Docker 部署 — 實施要領（12 機，10GB 磁碟）
 
-> 2026-09-18 定案：Runner 以 **Docker 形式**部署在 **192.168.1.12（Ubox-02）**（純 docker host，
-> 無 komodo）。**12 只有 10GB 磁碟，磁碟紀律是本方案核心。** 對 12 的評估全程唯讀。
+> **2026-09-18 已部署完成**：Runner（`forgejo-runner-redlib:13.1.0`）在 **192.168.1.12（Ubox-02）**
+> 上線，`labels: [redlib]`，poller 正常、註冊成功（`declared successfully`）。
+> **12 只有 10GB 磁碟，磁碟紀律是本方案核心。**
 > 產出的映像**只推送至 Codeberg 登錄區**（`codeberg.org`），本地 Forgejo 與 12 都不保留編譯產物（見下）。
+> 待辦：workflow 修正（見 `forgejo-runner-workflow.md`）+ 首次 build 驗證；cargo cache tier 待拍板。
 
 ## 目標
 12 上的 Forgejo Runner 執行 `.forgejo/workflows/build.yml`：docker build redlib → 推送 `codeberg.org/Lawlietr/redlib:latest` → **本地清理**。
@@ -15,25 +17,36 @@
 - 無 komodo（124 的 komodo 管理不涵蓋 12）→ 用**單機 compose 目錄**管理。
 - runner 鏡像源：`data.forgejo.org/forgejo/runner`，最高 `13.1.0`（runner 版本獨立於 Forgejo；Forgejo 15 文件示範即 `:13`）。
 
-## 部署：單機 compose 目錄
+## 部署（已執行）：單機 compose 目錄
 目錄：`/opt/forgejo-runner/`（12 上）
-- `compose.yaml`：單一 runner 容器。
-- `runner-config`：server `url: http://192.168.1.124:3000` + uuid/token（**機敏，留在 12，不進 git**）。
-- `data/`：runner 狀態 + job workspace（job 只 checkout 本 repo，很小；docker build 產物在 docker 層，不在此）。
-- runner 鏡像：由 `data.forgejo.org/forgejo/runner:13.1.0` **擴建**（`Dockerfile` 同目錄，`docker build` 一次）：
-  補 **nodejs（actions）+ git + docker-cli + ca-certificates**。base 應為 alpine（`apk`），部署時先確認。
-  **不需 rust/cargo**——redlib 的 cargo build 在 `redlib/Dockerfile` builder stage 容器內。
-- label：`redlib:host`（host label 的 step 跑在 runner 容器自身 → 工具鏈裝在鏡像裡）。
-- volumes：設定檔（ro）、`/var/run/docker.sock`（docker build/push 直用 host daemon，免 DinD）、`./data`。
-- `restart: unless-stopped`。
-- 註冊：官方 runner 需先 `register` 後 `daemon`；以 entrypoint `forgejo-runner register && forgejo-runner daemon` 完成（uuid/token 在設定檔）。
+- `Dockerfile`：`FROM data.forgejo.org/forgejo/runner:13.1.0`（**Alpine 3.24.1**，runner 本体 45.2MB），
+  `USER root` → `apk add --no-cache nodejs npm git docker-cli ca-certificates` → `USER 1000:1000`。
+  擴建後映像 **155MB**。**不需 rust/cargo**——redlib 的 cargo build 在 `redlib/Dockerfile` builder stage 容器內。
+- `config/config.yaml`：`labels: ["redlib:host"]`、`capacity: 1`、`server.connections.forgejo`
+  （`url: http://192.168.1.124:3000`、uuid、**`token_url: file:/run/runner-secrets/token.txt`**——token 走獨立檔，設定檔本身不含金鑰）。
+- `credentials/token.txt`：註冊 token（**機敏，600，owner uid 1000，不進 git**）。
+- `compose.yaml`：容器 `forgejo-runner`，`command: ["/bin/forgejo-runner", "daemon", "-c", ...]`，
+  `restart: unless-stopped`；volumes：`config.yaml`（ro）、`credentials/`→`/run/runner-secrets`（ro）、
+  `data/`→`/home/runner`、`/var/run/docker.sock`（docker build/push 直用 host daemon，免 DinD）。
+- `data/`（uid 1000）：`.runner` 註冊狀態 + job workspace（很小；docker build 產物在 docker 層，不在此）。
+- label：`redlib:host`（host label 的 step 跑在 runner 容器自身 → 工具鏈裝在鏡像裡）；
+  workflow 的 `runs-on: redlib`。
+- 註冊：**v13.1.0 的 `register` 副命令已 deprecated**——只需 `daemon`，它會從 config 自動註冊
+  （日誌 `declared successfully` 即成功）。
+
+### 部署踩過的坑（照此文件部署時直接避開）
+1. 映像預設 **USER 1000**（非 root）→ Dockerfile 裡 `apk add` 前必須 `USER root`。
+2. entrypoint 是 `dumb-init` → compose 的 `command` 要寫**完整 binary 路徑** `/bin/forgejo-runner`，
+   只寫 `daemon` 會被當成可執行檔名。
+3. token 檔若 root:600 → 容器（uid 1000）讀不到，開機報 `permission denied`；要 chown 給 1000。
+4. `data/` 目錄要先建好並 chown 1000:1000，否則容器寫 `.runner`/workdir 會失敗。
 
 ## 磁碟紀律（10GB，核心）
 ### 預算
 | 項目 | 大小 | 性質 |
 |---|---|---|
 | 既有系統 | 2.6G | 常駐 |
-| runner 擴建映像（runner+node+git+docker-cli） | ~0.4G | 常駐 |
+| runner 映像（base 45MB + 擴建 155MB） | ~0.2G | 常駐（實測） |
 | runner data/workspace | <0.1G | 常駐（小） |
 | build 瞬時：rust:alpine base pull | ~1.0G | **build 期間** |
 | build 瞬時：apk + git clone（depth 300 + 6 PR） | ~0.2-0.3G | **build 期間** |
@@ -48,9 +61,19 @@
 2. **push 成功後立即清理**：`docker image prune -a -f && docker builder prune -f`
    （builder stage、base pull、最終映像全清 → 回到 baseline）。
 3. **push 失敗也清理**：trap 保證失敗路徑同樣 prune，不累積殘層。
-4. **不設持久 cache**：不預拉 base、不設 BuildKit cache mount、不設 sccache——每次 build 從零，
-   換取磁碟可預測（代價：每次 build 慢一些，接受）。
-5. 常駐總佔用（系統 2.6G + runner ~0.5G）≈ 3.1G，**長期待機剩 ~6.9G**，安全。
+4. **不預拉 base、不設 sccache**（BuildKit cache mount 見下「編譯 cache」，待拍板）。
+5. 常駐總佔用（系統 2.6G + runner ~0.2G）≈ 2.8G，**長期待機剩 ~7.2G**，安全（部署後實測剩 7.5G）。
+
+### 編譯 cache（初期反覆 build 用，待拍板）
+BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區：
+- **Tier 1**：`RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo` 包住 `cargo fetch`
+  （免重複下載 ~450 crates；常駐 ~0.5G；重編仍為完整編譯 5-15 分）。
+- **Tier 2**：再對 `cargo build` 加 `--mount=type=cache,id=cargo-target,target=/redlib/target`
+  （**增量編譯**：改 merge 鏈重 build 只重編受影響 crate，秒~1 分；常駐 ~2.5-3.5G，待機剩 ~3-4G）。
+- 採 cache 後紀律修正：push 後清理**只跑 `docker image prune -a -f`，不跑 `docker builder prune`**（會刪 cache）；
+  以 `docker builder du` 監控，超預算一次性 `docker builder prune -af` 回收；守門門檻隨 tier 調整。
+- 另注意：`git clone` 層被 docker 層 cache 住時**不會**抓上游 redlib main 的新 commit（要 `--no-cache` 或 cache-bust ARG）；
+  對測試自己的 PR bake 反而是優點（決定論）。
 
 ### RAM 注意
 10G RAM 無 swap；cargo 5 並行 release build 峰值約 3-5G，可行。同機若日後加高負載服務，重估。
@@ -62,10 +85,11 @@
   push 完即 prune——12 上也只剩 runner 本身的映像。
 - 即：**產物只存在 codeberg.org**；12 只有「build 期間的瞬時占用」，Forgejo 端零占用。
 
-## 註冊（人工、機敏）
-- 本地 Forgejo → redlib_docker → Settings → Actions → Runners → Create new runner（repo 層級）。
-- UUID + Token 填入 12 的 runner-config（**勿寫入版本庫**）。
-- `CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets。
+## 註冊（已完成，機敏）
+- 已於本地 Forgejo redlib_docker（repo 層級）建立 runner；UUID + Token 在 12 的
+  `config/config.yaml`（uuid）與 `credentials/token.txt`（token，`token_url` 引入）。
+- **勿寫入版本庫。** 舊機制（`register` 命令流程）的 token 已棄用，勿再用。
+- `CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設，首次 build 前必須完成**）。
 
 ## Workflow 同步修正（部署時一起做）
 見 `forgejo-runner-workflow.md`：`runs-on: redlib`、podman→docker、登錄區 `codeberg.org/Lawlietr/redlib:latest`；
