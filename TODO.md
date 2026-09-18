@@ -13,8 +13,8 @@
 ## P1 待辦
 
 - [ ] **接線 redlib build workflow 並完成首次 build**
-  - 狀態：runner 已上線（label `redlib`）；workflow 修正與 Tier 2 cache 已改完（待推送，推送即觸發首次 build）。
-  - 前置（唯一阻斷）：`CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未設；設好再 push**，否則首次 build 會在 login 步失敗）。
+  - 狀態：runner 已上線（label `redlib`）；cbgproxy workaround + socket 權限（`--group-add 990`）+ login 重試已就緒；推送即觸發 build。
+  - 前置（唯一阻斷）：`CODEBERG_PAT`（write:packages）設於本地 Forgejo 的 redlib_docker repo secrets（**尚未確認；沒設的話 login 重試 6 次後仍會失敗**）。
   - 已定案：cargo cache **Tier 2**（registry + target cache mount，增量編譯）。
   - 實作要領：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
 
@@ -25,6 +25,7 @@
 ## 已完成
 
 - [x] 部署 Forgejo Runner（Docker 形式，12 機 192.168.1.12，`/opt/forgejo-runner/` 單機 compose，label `redlib:host`，2026-09-18 上線）；產物只推 `codeberg.org`，本地 Forgejo/12 不保留
+- [x] 12 機 cbgproxy 反向代理 workaround（codeberg 邊緣砍連線；含 token curl 攔截 + 重試）＋ runner 容器 docker socket 權限修正（`--group-add 990`）；要領見 `design/forgejo-runner-workflow.md` §6
 - [x] 新增 Codeberg Forgejo Actions workflow（`.forgejo/workflows/build.yml`，podman / amd64 / 推 `registry.codeberg.org`）
 - [x] Dockerfile bake PR #506 #509 #521 #560 #539 #549（`--depth 300` + `-X ours` merge 鏈）
 - [x] 於 `AGENTS.md` 記錄 PR bake 清單與 merge 機制

@@ -42,7 +42,21 @@ jobs:
         run: bash .forgejo/scripts/disk_guard.sh
 
       - name: Login to Codeberg Container Registry
-        run: echo "${{ secrets.CODEBERG_PAT }}" | docker login codeberg.org --username "${{ github.repository_owner }}" --password-stdin
+        env:
+          CODEBERG_PAT: ${{ secrets.CODEBERG_PAT }}
+        run: |
+          # The codeberg edge intermittently cancels Basic-auth token requests
+          # from this host (kill window lasts a couple of minutes). Retry the
+          # whole login with growing backoff until the window passes.
+          for i in 1 2 3 4 5 6; do
+            if echo "$CODEBERG_PAT" | docker login codeberg.org --username "${{ github.repository_owner }}" --password-stdin; then
+              exit 0
+            fi
+            echo "login attempt $i failed, retrying in $((i*15))s..."
+            sleep $((i*15))
+          done
+          echo "docker login failed after 6 attempts" >&2
+          exit 1
 
       - name: Build and Push Images
         run: |

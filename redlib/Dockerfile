@@ -5,6 +5,7 @@
 # Manual "Run workflow" (no input) now builds all apps in the tree.
 # Runner container needs --group-add <docker-gid> so job docker login
 # reaches the daemon (client-side fallback hits the edge directly).
+# Login step now retries 6x across codeberg edge kill windows.
 ARG ALPINE_VERSION=3.22
 
 FROM rust:alpine${ALPINE_VERSION} AS builder

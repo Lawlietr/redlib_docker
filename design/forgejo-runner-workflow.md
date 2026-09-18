@@ -83,3 +83,19 @@
 - `/etc/hosts` 導流只影響 12 機 host 層對 `codeberg.org` 的解析（containers 用自己的 DNS，不受影響）。
 - 若 codeberg 邊緣 IP 變更（非固定），需更新代理內的 `upstreamIP`。
 - 此 workaround 與 workflow 本身無關；CI 側完全無感。
+
+### 6.1 後續發現與修正（2026-09-18 晚些）
+1. **Basic auth 砍連線是「間歇窗口」**：`/v2/token` 帶 Basic auth 的請求（無論 Go 客戶端
+   還是 curl）會在數分鐘的「砍窗口」內一律被邊緣取消（h2 `stream CANCEL` / h1 `unexpected EOF`）；
+   窗口過去後全部恢復。窗口疑似與失敗認證嘗試的累積有關。
+   → 代理改為**攔截 `/v2/token`、以 curl 子程序上游 + 5 次重試**；
+   workflow 的 login step 再加**6 次整輪重試（backoff 15–75s）**跨窗口。
+2. **runner 容器 job user 沒有 docker socket 權限 → docker CLI 用戶端 fallback**：
+   job 以 UID 1000 執行，對 `/var/run/docker.sock`（root:990）無權限；`docker login` 連不上
+   daemon 時會**改在 CLI 端自己對 registry 驗證**（log 的 endpoint 結構與 daemon 不同、daemon
+   journal 無記錄），直連 codeberg 真實邊緣 → 必然 `unexpected EOF`，完全繞過 cbgproxy。
+   → 重建 runner 容器時加 `--group-add 990`（host docker 群組 GID）。
+   重建指令注意：image 的 ENTRYPOINT 是 dumb-init，CMD 需完整給
+   `/bin/forgejo-runner daemon -c /home/runner/.config/forgejo/runner/config.yaml`。
+3. 驗證路徑（12 機）：`docker exec -u 1000:1000 forgejo-runner docker login ...` 應走
+   host daemon（journal 出現 3 欄位 endpoint）→ https 拒連 → http cbgproxy → token via curl。
