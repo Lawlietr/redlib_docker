@@ -32,8 +32,17 @@ REDLIB_BRANCH="${REDLIB_BRANCH:-main}"
 # required for the build itself.
 export CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
+export CXX_aarch64_unknown_linux_musl=aarch64-linux-gnu-g++
+export AR_aarch64_unknown_linux_musl=aarch64-linux-gnu-ar
 export CC_armv7_unknown_linux_musleabihf=arm-linux-gnueabihf-gcc
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=arm-linux-gnueabihf-gcc
+export CXX_armv7_unknown_linux_musleabihf=arm-linux-gnueabihf-g++
+export AR_armv7_unknown_linux_musleabihf=arm-linux-gnueabihf-ar
+# NOTE: CXX_*/AR_* are required — boring-sys2 ships a C++ source
+# (encrypted_client_hello.cc). The cc crate falls back to the HOST g++ if
+# CXX_<target> is unset, producing x86_64 .cc.o files that the aarch64/armv7
+# linker rejects with "file in wrong format (EM: 62)". Verified: amd64 builds
+# with CC_* only; arm64/armv7 fail without CXX_*/AR_* (design/multi-arch-build.md).
 
 # docker platform : cargo musl triple : per-arch image tag
 ARCHES=(
