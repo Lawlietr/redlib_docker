@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64 + armv7，暂定 Plan B）**：12 機磁碟 2026-09-18 已擴至 30GB（原 10GB），Plan A（`buildx --platform` 一次三 arch）與 Plan B（逐檔 build/push/prune）如今都空間充足。aarch64 = arm64（`linux/arm64`）；armv7（`linux/arm/v7`）為 32-bit，另計。把現行單一 amd64 glibc 靜態改為三平台 musl 靜態（`x86_64` / `aarch64` / `armv7`…`musleabihf`），原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` 多平台 manifest list 自動偵測架構，推 `codeberg.org/lawlietr/redlib`。子決策：(a) **B1 統一 musl（建議，會改 amd64 編譯方法需重測）vs B2 amd64 維持 glibc 零風險**；(b) **codeberg 多平台 manifest 實測驗證**。實作細節見 `design/multi-arch-build.md`。
+- [ ] **多平台建置（amd64 + arm64 + armv7，Plan B 已定）**：核心原則**編譯在 12 runner（Ubox-02）跑，最後 push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` 多平台 manifest list、各平台 tag。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（boring-sys2 C++ 檔缺這會用 host g++ 編 → arm 的 "file in wrong format"），2026-09-19 commit `fc555ee`；(2) ⏳ runner 映像為 Alpine，只有 bare-metal `none-elf` 交叉編譯器，**沒有** build 要的 `*-linux-gnu` 套件——需把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈；(3) ⏳ 重建後觸發 workflow 實跑三平台；(4) ⏳ codeberg 多平台 manifest 實測驗證（`docker buildx imagetools inspect`）。已在本機（Code-Agent-01）驗證 amd64 musl 編過、arm64/armv7 補 `CXX_*`/`AR_*` 後能過。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 

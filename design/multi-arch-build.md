@@ -57,9 +57,17 @@ build script（host，redlib:host label）
 
 > **待 user 拍板 B1 / B2。** 未定前兩條路都記在此。
 
-## 5. 工具鏈（12 機，x86_64 host）
+## 5. 工具鏈（12 機 runner）
 
-交叉編譯需要的套件（裝在 builder 層 = 暫存，build 完 prune 清掉）：
+> **編譯跑在 12 runner（Ubox-02 `forgejo-runner` 容器），不在 host、不在本地。**
+> runner 影像是 **Alpine**（`forgejo/runner` 基底），但 Alpine 只有裸機 `none-elf`
+> 交叉編譯器（`gcc-aarch64-none-elf` 等），**沒有**本 build 要的 `*-linux-gnu`
+> 套件。已確認：把 runner 映像改在 **Debian（`rust:slim-bookworm`）基底重建**，
+> 用 `apt-get install` 装下列套件（與設計假設一致、本地已驗證可行）。
+
+交叉編譯需要的套件（裝在 runner 映像，一次到位）：
+
+
 
 ```
 gcc-aarch64-linux-gnu      # arm64 的 C 編譯器（boring-sys2 編 BoringSSL 用）
@@ -84,6 +92,13 @@ export CC_armv7_unknown_linux_musleabihf=arm-linux-gnueabihf-gcc
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=arm-linux-gnueabihf-gcc
 
 cargo build --release --locked --target x86_64-unknown-linux-musl
+```
+
+> **`CXX_*`/`AR_*` 必要**：boring-sys2 帶一個 C++ 來源（`encrypted_client_hello.cc`）。
+> `cc` crate 若沒見 `CXX_<target>` 會回退到 **host `g++`（x86_64）** 去編，產生
+> x86_64 的 `.cc.o`，arm64/armv7 linker 報 "file in wrong format (EM: 62)"。
+> `build_and_push.sh` 已設 `CC_*`+`CXX_*`+`AR_*`（2026-09-19 commit `fc555ee`）。
+> 實測：amd64 只需 `CC_*` 就能過；arm64/armv7 不補 `CXX_*`/`AR_*` 必敗。
 cargo build --release --locked --target aarch64-unknown-linux-musl
 cargo build --release --locked --target armv7-unknown-linux-musleabihf
 ```
@@ -138,7 +153,8 @@ docker buildx imagetools create \
 4. **per-platform tag**：`docker pull …:amd64` 等確認解析到單檔。
 
 ## 10. 風險 / 待辦
-
+- [x] **runner 工具鏈**：runner 是 Alpine、缺 `*-linux-gnu` 交叉編譯器。解法=把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈。`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
+- [ ] **重建 runner 映像並驗證**（daemon 能起 + 能原生交叉編譯三 target）—— P0 上線前最後一步 infra。
 - [ ] **codeberg 多平台 manifest 實測驗證**（第 9.3 項）—— reliability 關鍵。
 - [ ] **amd64 libc 子決策 B1/B2**（第 4 項）—— 定案前不改碼。
 - [ ] 12 機 30GB 在「三檔同時暂存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。

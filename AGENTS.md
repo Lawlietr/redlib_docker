@@ -48,12 +48,16 @@ docker run --rm --entrypoint /redlib redlib-test --help
 
 ### Forgejo Actions (primary)
 
-`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit):
-- **Trigger**: Changes to `Dockerfile`, or manual dispatch from the local Forgejo UI
-- **Platform**: linux/amd64
-- **Registry**: `codeberg.org/lawlietr/redlib:latest` (lowercase namespace; login with the `CODEBERG_PAT` repo secret, write:packages scope)
+`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit).
+
+**Workflow principle: compile on the 12 runner, then push.** Multi-arch binaries are cross-compiled natively on the runner (no QEMU), each packed into `scratch` via `Dockerfile.pack`, pushed per-platform, then merged into a multi-platform manifest list and pushed to the registry.
+
+- **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
+- **Platform**: `linux/amd64`, `linux/arm64`, `linux/arm/v7` (musl static, native cross-compile)
+- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). It must carry the full toolchain — `rust`/`cargo` + the three musl std targets + cross `gcc`/`g++`/`ar` for `aarch64-unknown-linux-musl` and `armv7-unknown-linux-musleabihf` + `clang`/`libclang`/`cmake`/`perl`/`pkg-config` (boring-sys2/bindgen). The runner image is Alpine; Alpine ships only bare-metal `none-elf` cross compilers, **not** the `*-linux-gnu` ones this build needs, so the image is rebuilt on a Debian (`rust:slim-bookworm`) base to install them via `apt` (see `design/multi-arch-build.md` §5/§10).
+- **Push target**: `codeberg.org/lawlietr/redlib` (lowercase namespace). Tags: `latest` + `<git-sha>` (multi-platform manifest lists), plus per-platform `amd64`/`arm64`/`armv7`. Login uses the `CODEBERG_PAT` repo secret (write:packages), username `Lawlietr` (the Codeberg account, not the local Forgejo owner).
 - Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 30GB runner box clean
-- Details: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
+- Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*` for the arm targets — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)". Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 ### GitHub Actions Workflow (guarded backup)
 
