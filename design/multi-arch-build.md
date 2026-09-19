@@ -1,16 +1,15 @@
-# 多平台建置（amd64 + arm64 + armv7）— 實施要領
+# 多平台建置（amd64 + arm64）— 實施要領
 
 > 優先級 **P0**。本檔記錄「怎麼做」；工作進度見 `TODO.md`。
 > 機敏資訊（`CODEBERG_PAT`）只放在 repo secret，不寫入本檔。
 
 ## 1. 目標
 
-把現行**單一 amd64** 映像改為**三平台**，並用一份 `latest` manifest list 讓
+把現行**單一 amd64** 映像改為**兩平台**，並用一份 `latest` manifest list 讓
 `docker pull` 自動偵測架構：
 
 - `linux/amd64`     ← `x86_64-unknown-linux-musl`
 - `linux/arm64`     ← `aarch64-unknown-linux-musl`（樹莓派 3/4 64-bit）
-- `linux/arm/v7`    ← `armv7-unknown-linux-musleabihf`（樹莓派 32-bit）
 
 推送目標：`codeberg.org/lawlietr/redlib`（namespace 全小寫，docker 規則）。
 
@@ -36,72 +35,62 @@ build script（host，redlib:host label）
     docker build --platform <p> -t img:<arch> -f Dockerfile.pack .
     docker push img:<arch>
     docker image prune -a -f                      # 逐檔 prune，壓峰值
-  三檔都 push 後：
+  兩檔都 push 後：
     docker buildx imagetools create -t img:latest -t img:<sha> \
-        img:amd64 img:arm64 img:armv7             # 合併成 manifest list
+        img:amd64 img:arm64                         # 合併成 manifest list
     docker push img:latest img:<sha>              # 推 manifest
 ```
 
 為什麼不用 buildx `--platform all --push`（Plan A）：
-- x86_64 機上 arm64/armv7 會跑 **QEMU 模擬**，armv7 尤其慢（可能 30–60 分）。
-- `--platform all` 一次留三張暫存映像，**峰值碟可能衝破 30GB**。Plan B 逐檔
+- x86_64 機上 arm64 會跑 **QEMU 模擬**，速度較慢。
+- `--platform all` 一次留兩張暫存映像，**峰值碟可能衝破 30GB**。Plan B 逐檔
   build/push/prune 把峰值壓在單個 build，30GB 很穩。
 
-## 4. target / libc 子決策（待確認）
+## 4. target / libc 子決策
 
-- **B1（建議）：三檔統一 musl 靜態。** musl target 的 `+crt-static` 是 Rust 預設，
-  不用手搓靜態 flag。match upstream、一套 flag、最乾淨。**會改 amd64 的編譯方法
-  （glibc→musl）**，但 redlib 無 glibc 專屬需求，風險低，改完重測即可。
-- **B2（對 amd64 零風險）：amd64 維持現行 glibc 靜態，只加 arm64/armv7 用 musl。**
-  amd64 完全不動。代價：兩套 libc、較複雜、amd64 與 arm 無法共用編譯管線。
-
-> **待 user 拍板 B1 / B2。** 未定前兩條路都記在此。
+- **B1（已定案）：兩檔統一 musl 靜態。** musl target 的 `+crt-static` 是 Rust 預設，
+  不用手搓靜態 flag。match upstream、一套 flag、最乾淨。**amd64 從 glibc 改為 musl**，
+  但 redlib 無 glibc 專屬需求，風險低，改完重測即可。
 
 ## 5. 工具鏈（12 機 runner）
 
-> **編譯跑在 12 runner（Ubox-02 `forgejo-runner` 容器），不在 host、不在本地。**
+> **所有工具鏈安裝與建置操作全在 12 runner（Ubox-02 `forgejo-runner` 容器）執行。**
+> **本地（Code-Agent-01）不裝任何工具鏈、不碰本地 Forgejo。**
 > runner 影像是 **Alpine**（`forgejo/runner` 基底），但 Alpine 只有裸機 `none-elf`
 > 交叉編譯器（`gcc-aarch64-none-elf` 等），**沒有**本 build 要的 `*-linux-gnu`
-> 套件。已確認：把 runner 映像改在 **Debian（`rust:slim-bookworm`）基底重建**，
-> 用 `apt-get install` 装下列套件（與設計假設一致、本地已驗證可行）。
+> 套件。解法：把 runner 映像改在 **Debian（`rust:slim-bookworm`）基底重建**，
+> 用 `apt-get install` 安裝下列套件。
 
 交叉編譯需要的套件（裝在 runner 映像，一次到位）：
 
-
-
 ```
 gcc-aarch64-linux-gnu      # arm64 的 C 編譯器（boring-sys2 編 BoringSSL 用）
-gcc-arm-linux-gnueabihf    # armv7 的 C 編譯器
 musl-tools                 # musl libc（rustup 的 musl target 已內建 static libc）
 clang libclang-dev         # bindgen（dlopen libclang，host glibc 正常）
 cmake perl pkg-config git  # build deps
 ```
 
-rust target（`rustup target add` 三個）：
+rust target（`rustup target add` 兩個）：
 ```
 x86_64-unknown-linux-musl
 aarch64-unknown-linux-musl
-armv7-unknown-linux-musleabihf
 ```
 
 編譯指令（upstream 實測有效的寫法，env 只設 linker/CC）：
 ```bash
 export CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
-export CC_armv7_unknown_linux_musleabihf=arm-linux-gnueabihf-gcc
-export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER=arm-linux-gnueabihf-gcc
 
 cargo build --release --locked --target x86_64-unknown-linux-musl
+cargo build --release --locked --target aarch64-unknown-linux-musl
 ```
 
 > **`CXX_*`/`AR_*` 必要**：boring-sys2 帶一個 C++ 來源（`encrypted_client_hello.cc`）。
 > `cc` crate 若沒見 `CXX_<target>` 會回退到 **host `g++`（x86_64）** 去編，產生
-> x86_64 的 `.cc.o`，arm64/armv7 linker 報 "file in wrong format (EM: 62)"。
+> x86_64 的 `.cc.o`，arm64 linker 報 "file in wrong format (EM: 62)"。
 > `build_and_push.sh` 已設 `CC_*`+`CXX_*`+`AR_*`（2026-09-19 commit `fc555ee`）。
-> 實測：amd64 只需 `CC_*` 就能過；arm64/armv7 不補 `CXX_*`/`AR_*` 必敗。
-cargo build --release --locked --target aarch64-unknown-linux-musl
-cargo build --release --locked --target armv7-unknown-linux-musleabihf
-```
+> 實測：amd64 只需 `CC_*` 就能過；arm64 不補 `CXX_*`/`AR_*` 必敗。
+
 
 ## 6. 打包：Dockerfile.pack（薄打包，不編譯）
 
@@ -124,46 +113,46 @@ musl/glibc 全靜態 binary 都自包含，`scratch` 可直接跑（跟現在 am
 
 | tag | 類型 | 用途 |
 |-----|------|------|
-| `latest` | manifest list（三平台） | 主用，`docker pull` 自動偵測架構 |
+| `latest` | manifest list（兩平台） | 主用，`docker pull` 自動偵測架構 |
 | `<version>` / `<git-sha>` | manifest list | 固定可重現的 pin |
-| `amd64` / `arm64` / `armv7` | 單檔 | 明確 pull / 除錯 |
+| `amd64` / `arm64` | 單檔 | 明確 pull / 除錯 |
 
 `latest` 與各平台 tag 並存。用 `imagetools create` 一次產出 `latest` + `<sha>`：
 ```bash
 docker buildx imagetools create \
   -t "${IMAGE}:latest" -t "${IMAGE}:${GIT_SHA}" \
-  "${IMAGE}:amd64" "${IMAGE}:arm64" "${IMAGE}:armv7"
+  "${IMAGE}:amd64" "${IMAGE}:arm64"
 ```
 
 ## 8. workflow 調整（`.forgejo/workflows/build.yml`）
 
 - 觸發補上 build script 路徑：`paths: [ "Dockerfile", ".forgejo/scripts/build_and_push.sh" ]`。
 - `runs-on: redlib`（host label）不變。
-- 三平台 build/push/merge 都在 `build_and_push.sh` 內 sequential 完成。
+- 兩平台 build/push/merge 都在 `build_and_push.sh` 內 sequential 完成。
 - 磁碟紀律（12 機 30GB）：逐檔 prune，只留 BuildKit cargo cache（Tier 2）。
 
 ## 9. 驗證（上線前必做）
 
 1. **amd64（若走 B1）**：容器啟動、`/` 回 HTTP 200、`readelf -d` 無 dynamic section。
-2. **arm64 / armv7**：`readelf -h` 確認 machine 為 AArch64 / ARM；容器內可啟動。
+2. **arm64**：`readelf -h` 確認 machine 為 AArch64；容器內可啟動。
 3. **codeberg 多平台 manifest（重點待驗證）**：upstream 推 quay.io 全支援，
    **codeberg 未驗證**。用 `docker buildx imagetools inspect codeberg.org/lawlietr/redlib:latest`
-   確認列三平台；並實際在不同 arch 拉一次確認自動選對。（spec-compliant v2 registry，
+   確認列兩平台；並實際在不同 arch 拉一次確認自動選對。（spec-compliant v2 registry，
    理論上 OK，但務必實測。）
 4. **per-platform tag**：`docker pull …:amd64` 等確認解析到單檔。
 
 ## 10. 風險 / 待辦
 - [x] **runner 工具鏈**：runner 是 Alpine、缺 `*-linux-gnu` 交叉編譯器。解法=把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈。`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
-- [ ] **重建 runner 映像並驗證**（daemon 能起 + 能原生交叉編譯三 target）—— P0 上線前最後一步 infra。
+- [ ] **重建 runner 映像並驗證**（daemon 能起 + 能原生交叉編譯兩 target）—— P0 上線前最後一步 infra。
 - [ ] **codeberg 多平台 manifest 實測驗證**（第 9.3 項）—— reliability 關鍵。
-- [ ] **amd64 libc 子決策 B1/B2**（第 4 項）—— 定案前不改碼。
-- [ ] 12 機 30GB 在「三檔同時暂存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。
+- [x] **amd64 libc 子決策 B1/B2**（第 4 項）—— 已定案 B1（兩檔統一 musl）。
+- [ ] 12 機 30GB 在「兩檔同時暂存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。
 - [ ] GitHub Actions（`.github/workflows/build.yml`，ghcr.io 備援）目前**暫緩**，
-      待有 GitHub repo 再同步三平台（見 `design/github-actions-workflow.md`）。
+      待有 GitHub repo 再同步兩平台（見 `design/github-actions-workflow.md`）。
 
 ## 11. 與 upstream 差異
 
 - upstream：在 GitHub Actions 編三 target → 發 GitHub release tarball → Dockerfile
   只 `curl` 下載打包（`main-docker.yml` + `build-artifacts.yaml`）。
-- 我們：在**本地 runner 原生交叉編譯**（無 QEMU、快）→ 直接打包推 codeberg。
+- 我們：在**12 runner 原生交叉編譯**（無 QEMU、快）→ 直接打包推 codeberg。
   編譯位置與推送目標不同，target 與 musl 路線一致。

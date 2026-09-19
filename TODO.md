@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64 + armv7，Plan B 已定）**：核心原則**編譯在 12 runner（Ubox-02）跑，最後 push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` 多平台 manifest list、各平台 tag。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（boring-sys2 C++ 檔缺這會用 host g++ 編 → arm 的 "file in wrong format"），2026-09-19 commit `fc555ee`；(2) ⏳ runner 映像為 Alpine，只有 bare-metal `none-elf` 交叉編譯器，**沒有** build 要的 `*-linux-gnu` 套件——需把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈；(3) ⏳ 重建後觸發 workflow 實跑三平台；(4) ⏳ codeberg 多平台 manifest 實測驗證（`docker buildx imagetools inspect`）。已在本機（Code-Agent-01）驗證 amd64 musl 編過、arm64/armv7 補 `CXX_*`/`AR_*` 後能過。實作細節見 `design/multi-arch-build.md`。
+- [ ] **多平台建置（amd64 + arm64，Plan B 已定）**：核心原則**編譯在 12 runner（Ubox-02）跑，最後 push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` 多平台 manifest list、各平台 tag。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（boring-sys2 C++ 檔缺這會用 host g++ 編 → arm 的 "file in wrong format"），2026-09-19 commit `fc555ee`；(2) ⏳ runner 映像為 Alpine，只有 bare-metal `none-elf` 交叉編譯器，**沒有** build 要的 `*-linux-gnu` 套件——需把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈；(3) ⏳ 重建後觸發 workflow 實跑兩平台；(4) ⏳ codeberg 多平台 manifest 實測驗證（`docker buildx imagetools inspect`）。工具鏈安裝與驗證**全在 12 runner 執行**，本地不裝任何工具鏈、不碰本地 Forgejo。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
@@ -29,7 +29,7 @@
 
 ## P3 待辦
 
-- [ ] GitHub Actions 三平台（multi-arch）同步：待 P0 多平台定案且有 GitHub repo 後，把 amd64/arm64/armv7 的 build+push 同步到 `ghcr.io`（與 `.forgejo` 三平台流程對稱）。這與 P2（把現行單 arch 流程 mirror 到 ghcr.io，workflow 已寫好）是**不同項目**。實作細節見 `design/multi-arch-build.md` §11。
+- [ ] GitHub Actions 兩平台（multi-arch）同步：待 P0 多平台定案且有 GitHub repo 後，把 amd64/arm64 的 build+push 同步到 `ghcr.io`（與 `.forgejo` 兩平台流程對稱）。這與 P2（把現行單 arch 流程 mirror 到 ghcr.io，workflow 已寫好）是**不同項目**。實作細節見 `design/multi-arch-build.md` §11。
 
 ---
 

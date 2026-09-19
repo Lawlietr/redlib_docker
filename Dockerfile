@@ -2,7 +2,7 @@
 # AGENTS.md and design/forgejo-runner-workflow.md.
 # Anyone can build this locally: `docker build -t redlib .` (repo root).
 #
-# CI multi-arch build (amd64/arm64/armv7, musl static) does NOT use this file:
+# CI multi-arch build (amd64/arm64, musl static) does NOT use this file:
 # it cross-compiles natively and packs via Dockerfile.pack (see
 # .forgejo/scripts/build_and_push.sh and design/multi-arch-build.md). This
 # Dockerfile stays as the single-command local amd64 build.
