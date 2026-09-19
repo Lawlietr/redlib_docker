@@ -25,7 +25,7 @@
 
 ## P2 待辦
 
-- [ ] GitHub Actions 建置流程（**中高優先**）：目前 forgejo/codeberg runner 已能編譯並推送映像；下一步把相同的 build + push 能力做到 GitHub Actions（推送 `ghcr.io`）。**現階段先記錄，暫不實作**。實作細節待 `design/` 補上。
+- [ ] GitHub Actions 建置流程（**中高優先**）：目前 forgejo/codeberg runner 已能編譯並推送映像；下一步把相同的 build + push 能力做到 GitHub Actions（推送 `ghcr.io`）。**workflow 已寫好（`.github/workflows/build.yml` + `.github/scripts/build_and_push.sh`），待加入 GitHub 遠端後即可跑**。實作細節見 `design/github-actions-workflow.md`。
 
 ## P3 待辦
 
