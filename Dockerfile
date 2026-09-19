@@ -19,6 +19,8 @@
 #   `docker login` reaches the daemon (client-side fallback hits the edge);
 # - the login step retries 6x across codeberg edge kill windows and fails
 #   fast with a clear error if CODEBERG_PAT is unset.
+# - the runner container needs Node.js (for actions/checkout@v4); it is
+#   installed on the runner image (see /opt/forgejo-runner/Dockerfile).
 # Builder is glibc-based (slim bookworm), NOT alpine/musl: wreq (upstream
 # redlib's current HTTP/TLS stack) pulls boring-sys2 (BoringSSL), whose
 # build script needs cmake + a C compiler + libclang, and bindgen dlopens
