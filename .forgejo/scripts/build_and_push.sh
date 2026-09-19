@@ -60,6 +60,10 @@ for entry in "${ARCHES[@]}"; do
   echo "Building ${tag}   (cargo target: ${triple})"
   echo "======================================================"
 
+  # Clean stale build artifacts (e.g. after toolchain change) so we get a
+  # fully fresh compile with the current cross-compiler.
+  rm -rf "${SRC_DIR}/target/${triple}"
+
   # Build the binary natively for this target. --locked pins deps to Cargo.lock.
   cargo build --release --locked --target "${triple}" --manifest-path "${SRC_DIR}/Cargo.toml"
 
