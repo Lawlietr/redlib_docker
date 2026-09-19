@@ -67,4 +67,4 @@ Dockerfile 產出的是 **x86_64-unknown-linux-gnu 全靜態 glibc binary**，�
 | 認證 | `secrets.GITHUB_TOKEN` + `contents: write` | `CODEBERG_PAT`（write:packages）secret |
 | 架構 | amd64-only（原生 build） | amd64-only（host 原生 build） |
 | guard | `if: github.server_url == 'https://github.com'` | 無（只在本地 Forgejo 跑） |
-| 磁碟紀律 | 不需要（GitHub runner 磁碟大） | 需要（10GB host，disk_guard + prune） |
+| 磁碟紀律 | 不需要（GitHub runner 磁碟大） | 需要（12 機 30GB host，disk_guard + prune） |

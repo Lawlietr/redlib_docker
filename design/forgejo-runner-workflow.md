@@ -30,7 +30,7 @@
 - secret 名稱：`CODEBERG_PAT`，設於**本地 Forgejo** 的 redlib_docker repo secrets（workflow 在本地 Forgejo 執行）。
 - **機敏，勿寫入版本庫。**
 
-## 5. 磁碟紀律（12 機只有 10GB，必做）
+## 5. 磁紀律（12 機 30GB，建議做）
 見 `forgejo-runner-deployment.md` 的磁碟預算。workflow 內落地為：
 1. **build 前守門**：`df --output=avail -k / | tail -1`，可用 < 6144000 KB（6G）→ 直接 fail（訊息：磁碟空間不足，中止 build）。
 2. **push 後清理**：`docker image prune -a -f && docker builder prune -f`（builder stage、base pull、最終映像全清）。
@@ -163,6 +163,6 @@ cargo rustc --release --locked --bin redlib --target-dir ... -- \
 dynamic section；scratch 映像 13.5MB；容器內 `Redlib 0.36.0` 啟動並對
 `/` 回 HTTP 200（實際抓到 Reddit 內容）。
 
-**磁碟影響（12 機 10GB）**：bookworm builder 映像層比 alpine 大（~2.5GB vs ~1.6GB），
+**磁碟影響（12 機 30GB）**：bookworm builder 映像層比 alpine 大（~2.5GB vs ~1.6GB），
 但 build 完 `docker image prune -a` 會清掉；持久的是 BuildKit cache mounts
 （registry + target，增量編譯用，~3–4GB）。若磁碟吃緊：`docker builder prune`。

@@ -52,7 +52,7 @@ docker run --rm --entrypoint /redlib redlib-test --help
 - **Trigger**: Changes to `Dockerfile`, or manual dispatch from the local Forgejo UI
 - **Platform**: linux/amd64
 - **Registry**: `codeberg.org/lawlietr/redlib:latest` (lowercase namespace; login with the `CODEBERG_PAT` repo secret, write:packages scope)
-- Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 10GB runner box clean
+- Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 30GB runner box clean
 - Details: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 ### GitHub Actions Workflow (guarded backup)

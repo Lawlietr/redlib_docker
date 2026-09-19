@@ -5,6 +5,8 @@ on:
     branches: [ main ]
     paths:
       - "Dockerfile"
+      - "Dockerfile.pack"
+      - ".forgejo/scripts/build_and_push.sh"
   workflow_dispatch:
 
 jobs:
@@ -14,7 +16,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Disk Guard (10GB host)
+      - name: Disk Guard (30GB host)
         run: bash .forgejo/scripts/disk_guard.sh
 
       - name: Login to Codeberg Container Registry
@@ -43,7 +45,7 @@ jobs:
 
       - name: Build and Push Image
         run: |
-          # Always prune after the build, success or failure, so the 10GB host
+          # Always prune after the build, success or failure, so the 30GB host
           # disk returns to baseline. (Keeps the BuildKit cargo caches.)
           trap 'docker image prune -a -f' EXIT
           bash .forgejo/scripts/build_and_push.sh

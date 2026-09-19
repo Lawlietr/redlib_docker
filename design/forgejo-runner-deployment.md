@@ -1,8 +1,8 @@
-# Forgejo Runner Docker 部署 — 實施要領（12 機，10GB 磁碟）
+# Forgejo Runner Docker 部署 — 實施要領（12 機，30GB 磁碟）
 
 > **2026-09-18 已部署完成**：Runner（`forgejo-runner-redlib:13.1.0`）在 **192.168.1.12（Ubox-02）**
 > 上線，`labels: [redlib]`，poller 正常、註冊成功（`declared successfully`）。
-> **12 只有 10GB 磁碟，磁碟紀律是本方案核心。**
+> **12 磁碟已擴至 30GB（原 10GB，2026-09-18）。多架構同時編譯也绰有餘裕；push 後 prune 的習慣仍保留。**
 > 產出的映像**只推送至 Codeberg 登錄區**（`codeberg.org`），本地 Forgejo 與 12 都不保留編譯產物（見下）。
 > 待辦：首次在 Forgejo 設 `CODEBERG_PAT` secret → 推送 workflow 修正 → 首次 build 驗證。
 > cargo cache 已定案 **Tier 2**（registry + target 雙 cache mount，增量編譯）。
@@ -12,7 +12,7 @@
 
 ## 已查證環境（12，唯讀）
 - Ubox-02，Ubuntu 24.04.5，x86_64，**5C / 10G RAM**（可用 ~9.9G）。
-- **磁碟 10GB（zfs subvol），已用 2.6G、剩 7.5G**。
+- **磁碟 30GB（zfs subvol），已用 ~2.6G、剩 ~27G**。
 - Docker 29.8.1，**完全乾淨：0 映像、0 容器**。無 podman/cargo/node（只有 docker + git）。
 - outbound 可達：docker.io、data.forgejo.org、codeberg.org；到 Forgejo `http://192.168.1.124:3000` 13ms。
 - 無 komodo（124 的 komodo 管理不涵蓋 12）→ 用**單機 compose 目錄**管理。
@@ -42,7 +42,7 @@
 3. token 檔若 root:600 → 容器（uid 1000）讀不到，開機報 `permission denied`；要 chown 給 1000。
 4. `data/` 目錄要先建好並 chown 1000:1000，否則容器寫 `.runner`/workdir 會失敗。
 
-## 磁碟紀律（10GB，核心）
+## 磁碟紀律（30GB）
 ### 預算
 | 項目 | 大小 | 性質 |
 |---|---|---|
@@ -55,15 +55,15 @@
 | build 瞬時：cargo build release target | ~2.5-3.5G | **build 期間** |
 | 最終映像（scratch + 靜態二進位） | ~0.04G | push 後即刪 |
 
-**build 峰值 ≈ 4.5-5.5G**；剩 7.5G → 峰值後約剩 2-3G，可行但有紀律要求：
+**build 峰值 ≈ 5-6G**；30GB 下峰值後仍剩 ~24G，绰有餘裕（amd64 + arm64 一次多架構編也夠）。紀律主要為保持乾淨、避免 cache 無限增長：
 
 ### 紀律（寫進 workflow 與腳本）
-1. **build 前守門**：`df --output=avail -k /` 檢查，可用 < **6G** 就**中止**（快速失敗，勿吃爆磁碟）。
+1. **build 前守門**：`df --output=avail -k /` 檢查，可用 < **6G** 就**中止**（30GB 下僅為安全網，快速失敗避免吃爆磁碟）。
 2. **push 成功後立即清理**：`docker image prune -a -f && docker builder prune -f`
    （builder stage、base pull、最終映像全清 → 回到 baseline）。
 3. **push 失敗也清理**：trap 保證失敗路徑同樣 prune，不累積殘層。
 4. **不預拉 base、不設 sccache**（BuildKit cache mount 見下「編譯 cache」，待拍板）。
-5. 常駐總佔用（系統 2.6G + runner ~0.2G）≈ 2.8G，**長期待機剩 ~7.2G**，安全（部署後實測剩 7.5G）。
+5. 常駐總佔用（系統 2.6G + runner ~0.2G）≈ 2.8G，**長待機剩 ~27G**，非常寬裕（部署後實測剩 ~27G）。
 
 ### 編譯 cache（已定案 Tier 2，2026-09-18）
 BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持久區（`Dockerfile` 已改）：
@@ -74,7 +74,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
   常駐 ~2.5-3.5G）。
 - **關鍵陷阱**：cache mount 的內容**不屬於** stage 映像——所以 build 後必須
   `cp /cache/target/.../redlib dist/redlib`，release stage 改 `COPY --from=builder /redlib/dist/redlib`。
-- 紀律（已落地到 workflow）：build 前 `disk_guard.sh`（可用 < **2.5G** 即中止，Tier 2 常駐 cache 下門檻）；
+- 紀律（已落地到 workflow）：build 前 `disk_guard.sh`（可用 < **6G** 即中止，30GB 下僅為安全網；Tier 2 常駐 cache 約 3-4G）；
   build step 用 `trap 'docker image prune -a -f' EXIT` 保證成功/失敗都清 layer；
   **絕不跑 `docker builder prune`**（會刪 cargo cache）；以 `docker builder du` 監控，
   超預算時一次性 `docker builder prune -af` 回收。
@@ -104,7 +104,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 
 ## 遷移
 - **Forgejo 端零改動**：註冊資訊（uuid/token）在 runner 側（`/opt/forgejo-runner/`），
-  遷移 = 搬整個目錄到新機器（新機器需 docker + 可達 124:3000 + 磁碟 ≥10G）。
+遷移 = 搬整個目錄到新機器（新機器需 docker + 可達 124:3000 + 磁碟 ≥30G）。
 - 舊新兩台同時 online 且 label 相同會重復接單 → 新機上線後停舊機，必要時在 UI 刪舊 runner 紀錄（清單，非設定）。
 
 ## 部署後驗證

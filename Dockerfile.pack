@@ -1,0 +1,23 @@
+# Thin packer for Plan B multi-arch builds.
+#
+# The binary for each arch is pre-built natively by
+# .forgejo/scripts/build_and_push.sh (musl static, self-contained). This stage
+# only copies it into scratch — it does NOT compile.
+#
+# Build context must contain the pre-built binary named exactly "redlib".
+# Invoked per arch from build_and_push.sh, e.g.:
+#   docker build --platform linux/arm64 -t codeberg.org/lawlietr/redlib:arm64 \
+#       -f Dockerfile.pack dist-arm64
+#
+# NOTE: the full multi-stage build (local amd64 convenience) lives in the
+# root Dockerfile. CI uses this file so a single script can produce all three
+# platforms (see design/multi-arch-build.md).
+FROM scratch
+
+COPY redlib /redlib
+
+USER 1000:1000
+
+EXPOSE 8080
+
+ENTRYPOINT ["/redlib"]

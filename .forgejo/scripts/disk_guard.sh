@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# The runner host has only 10GB of disk. A redlib build peaks at ~4.5-5.5G
-# extra (base image pull + clone + cargo), and the Tier-2 BuildKit cargo
-# caches (~3-4G) persist between builds. Fail fast if free space is too low
-# so a build can never fill the disk.
-MIN_AVAIL_KB=2560000 # 2.5G
+# The runner host has 30GB of disk (originally 10GB, expanded 2026-09-18).
+# A multi-arch redlib build peaks at ~5-6G extra (base image pull + clone +
+# cargo), and the Tier-2 BuildKit cargo caches (~3-4G) persist between builds.
+# Fail fast if free space drops below the floor so a build can never fill the
+# disk. 6G floor matches the guard documented in the design files.
+MIN_AVAIL_KB=6144000 # 6G safety floor
 
 # NOTE: the job runs inside the Alpine/BusyBox runner image — `df --output`
 # is GNU-only and fails there; `df -P` (1024-byte blocks, POSIX columns) +
