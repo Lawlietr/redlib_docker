@@ -56,18 +56,28 @@ build script（host，redlib:host label）
 
 > **所有工具鏈安裝與建置操作全在 12 runner（Ubox-02 `forgejo-runner` 容器）執行。**
 > **本地（Code-Agent-01）不裝任何工具鏈、不碰本地 Forgejo。**
-> runner 影像是 **Alpine**（`forgejo/runner` 基底），但 Alpine 只有裸機 `none-elf`
-> 交叉編譯器（`gcc-aarch64-none-elf` 等），**沒有**本 build 要的 `*-linux-gnu`
-> 套件。解法：把 runner 映像改在 **Debian（`rust:slim-bookworm`）基底重建**，
-> 用 `apt-get install` 安裝下列套件。
+> runner 映像基底為 Alpine（`forgejo/runner`），在現有 Dockerfile 以 `apk add` 擴建，
+> 不需重建映像基底。
 
-交叉編譯需要的套件（裝在 runner 映像，一次到位）：
+runner Dockerfile 需增加的套件（`/opt/forgejo-runner/Dockerfile`，`apk add --no-cache`）：
 
 ```
-gcc-aarch64-linux-gnu      # arm64 的 C 編譯器（boring-sys2 編 BoringSSL 用）
-musl-tools                 # musl libc（rustup 的 musl target 已內建 static libc）
-clang libclang-dev         # bindgen（dlopen libclang，host glibc 正常）
-cmake perl pkg-config git  # build deps
+# cross-compiler：Alpine 提供 aarch64-linux-musl-gcc（musl-native cross）
+# 或 gcc-aarch64-linux-gnu（若 Alpine 有提供；否則用 musl-native）
+gcc-aarch64-linux-gnu \
+# bindgen 需要 clang/libclang（dlopen libclang）
+clang libclang-dev \
+# cmake 是 boring-sys2 build script 的依賴
+cmake \
+# rustup + cargo（build_and_push.sh 直接呼叫，runner 原本沒有）
+rustup \
+# git 原本已有，nodejs/npm 原本已有（actions/checkout 需要）
+```
+
+rust target（`rustup target add` 兩個，裝在 runner 容器內）：
+```
+x86_64-unknown-linux-musl
+aarch64-unknown-linux-musl
 ```
 
 rust target（`rustup target add` 兩個）：
@@ -142,8 +152,9 @@ docker buildx imagetools create \
 4. **per-platform tag**：`docker pull …:amd64` 等確認解析到單檔。
 
 ## 10. 風險 / 待辦
-- [x] **runner 工具鏈**：runner 是 Alpine、缺 `*-linux-gnu` 交叉編譯器。解法=把 runner 映像改在 Debian（`rust:slim-bookworm`）基底重建、`apt` 裝全工具鏈。`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
-- [ ] **重建 runner 映像並驗證**（daemon 能起 + 能原生交叉編譯兩 target）—— P0 上線前最後一步 infra。
+- [x] **runner 工具鏈（script 層）**：`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
+- [ ] **擴建 runner Dockerfile 安裝工具鏈**（`apk add` cross-compiler + rustup + clang）
+  → 重建 runner 容器 → 驗證 daemon 能起 + 能原生交叉編譯兩 target —— P0 上線前最後一步 infra。
 - [ ] **codeberg 多平台 manifest 實測驗證**（第 9.3 項）—— reliability 關鍵。
 - [x] **amd64 libc 子決策 B1/B2**（第 4 項）—— 已定案 B1（兩檔統一 musl）。
 - [ ] 12 機 30GB 在「兩檔同時暂存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。

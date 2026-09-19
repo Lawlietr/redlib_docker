@@ -54,7 +54,7 @@ docker run --rm --entrypoint /redlib redlib-test --help
 
 - **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
-- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). It must carry the full toolchain — `rust`/`cargo` + the two musl std targets + cross `gcc`/`g++`/`ar` for `aarch64-unknown-linux-musl` + `clang`/`libclang`/`cmake`/`perl`/`pkg-config` (boring-sys2/bindgen). The runner image is Alpine; Alpine ships only bare-metal `none-elf` cross compilers, **not** the `*-linux-gnu` ones this build needs, so the image is rebuilt on a Debian (`rust:slim-bookworm`) base to install them via `apt` (see `design/multi-arch-build.md` §5/§10).
+- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). It must carry the full toolchain — `rust`/`cargo` + the two musl std targets + cross `gcc` for `aarch64-unknown-linux-musl` + `clang`/`libclang`/`cmake` (boring-sys2/bindgen). The runner image is Alpine; extend with `apk add` (see `design/multi-arch-build.md` §5).
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
 - **Push target**: `codeberg.org/lawlietr/redlib` (lowercase namespace). Tags: `latest` + `<git-sha>` (multi-platform manifest lists), plus per-platform `amd64`/`arm64`. Login uses the `CODEBERG_PAT` repo secret (write:packages), username `Lawlietr` (the Codeberg account, not the local Forgejo owner).
 - Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 30GB runner box clean
