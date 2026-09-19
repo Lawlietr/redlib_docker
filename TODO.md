@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64 + armv7，暂定 Plan B）**：把現行單一 amd64 glibc 靜態改為三平台 musl 靜態（`x86_64` / `aarch64` / `armv7`…`musleabihf`），原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` 多平台 manifest list 自動偵測架構，推 `codeberg.org/lawlietr/redlib`。子決策：(a) **B1 統一 musl（建議，會改 amd64 編譯方法需重測）vs B2 amd64 維持 glibc 零風險**；(b) **codeberg 多平台 manifest 實測驗證**。實作細節見 `design/multi-arch-build.md`。
+- [ ] **多平台建置（amd64 + arm64 + armv7，暂定 Plan B）**：12 機磁碟 2026-09-18 已擴至 30GB（原 10GB），Plan A（`buildx --platform` 一次三 arch）與 Plan B（逐檔 build/push/prune）如今都空間充足。aarch64 = arm64（`linux/arm64`）；armv7（`linux/arm/v7`）為 32-bit，另計。把現行單一 amd64 glibc 靜態改為三平台 musl 靜態（`x86_64` / `aarch64` / `armv7`…`musleabihf`），原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` 多平台 manifest list 自動偵測架構，推 `codeberg.org/lawlietr/redlib`。子決策：(a) **B1 統一 musl（建議，會改 amd64 編譯方法需重測）vs B2 amd64 維持 glibc 零風險**；(b) **codeberg 多平台 manifest 實測驗證**。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
@@ -35,6 +35,7 @@
 
 ## 近期完成（保留最近 10 筆）
 
+- [x] 12 機磁碟擴至 30GB（原 10GB，2026-09-18）：設計檔、`disk_guard.sh`（守門 2.5G→6G）、`build.yml`、AGENTS.md 已全部更新；多架構一次編也绰有餘裕，仍保留逐檔 prune 習慣
 - [x] 接線 redlib build workflow 並完成首次 build（2026-09-18：CI 首次完整 build+push 到 `codeberg.org/lawlietr/redlib:latest` 成功，映像公開可匿名 pull；runner 12 機、docker+BuildKit、cargo cache Tier 2）
 - [x] 部署 Forgejo Runner（Docker 形式，12 機 192.168.1.12，`/opt/forgejo-runner/` 單機 compose，label `redlib:host`，2026-09-18 上線）；產物只推 `codeberg.org`，本地 Forgejo/12 不保留
 - [x] 12 機 cbgproxy 反向代理 workaround（codeberg 邊緣砍連線；含 token curl 攔截 + 重試）＋ runner 容器 docker socket 權限修正（`--group-add 990`）；要領見 `design/forgejo-runner-workflow.md` §6
@@ -44,4 +45,3 @@
 - [x] 新增 MIT `LICENSE`（repo 自有檔 MIT；上游 redlib 保留 AGPL-3.0）
 - [x] README 重寫（拉預編譯映像 + `docker` / `docker-compose` 部署；映像參考統一小寫 `lawlietr`）；移除過期 `REDIS_URL` 描述（現行 redlib 無 Redis 支援）
 - [x] 建置檔移到根目錄（廢除 `redlib/` 子目錄與 multi-app 偵測機制；單 app 專屬，觸發路徑改 `Dockerfile`，映像名固定 `redlib`）
-- [x] commit 並推送至 `origin` 與 `codeberg` 兩個 remote
