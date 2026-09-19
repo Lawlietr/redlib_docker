@@ -27,7 +27,7 @@ REDLIB_BRANCH="${REDLIB_BRANCH:-main}"
 #   --sysroot pointing to musl, so it can compile musl target C code.
 export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
 # bindgen needs glibc multiarch headers (Debian trixie: /usr/include/x86_64-linux-gnu)
-export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/include/x86_64-linux-gnu"
+export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/include/x86_64-linux-gnu --target=x86_64-unknown-linux-gnu -D__LP64__"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc
 export CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++
 export AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar
