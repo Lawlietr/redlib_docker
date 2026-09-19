@@ -14,35 +14,14 @@ This repository's own configuration files and scripts are licensed under the MIT
 
 ## Build Commands
 
-### Local Docker Build
-
 ```bash
-docker build -t redlib .
+docker build -t redlib .                          # local build
+# docker build --build-arg REDLIB_BRANCH=dev -t redlib .  # specific branch
+docker run -p 8080:8080 -d --name redlib redlib  # run
 ```
 
-### Build with Specific Redlib Branch
-
-```bash
-docker build --build-arg REDLIB_BRANCH=main -t redlib .
-```
-
-### Run the Container
-
-```bash
-docker run -p 8080:8080 -d --name redlib redlib
-```
-
-### Test Build (Builder Stage Only)
-
-```bash
-docker build --target builder -t redlib-test .
-```
-
-### Test Binary in Container
-
-```bash
-docker run --rm --entrypoint /redlib redlib-test --help
-```
+Test build: `docker build --target builder -t redlib-test .` then
+`docker run --rm --entrypoint /redlib redlib-test --help`.
 
 ## CI/CD
 
@@ -54,7 +33,7 @@ docker run --rm --entrypoint /redlib redlib-test --help
 
 - **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
-- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). It must carry the full toolchain — `rust`/`cargo` + the two musl std targets + cross `gcc` for `aarch64-unknown-linux-musl` + `clang`/`libclang`/`cmake` (boring-sys2/bindgen). The runner image is Alpine; extend with `apk add` (see `design/multi-arch-build.md` §5).
+- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Extends Alpine with `apk add` (cross-compiler + rustup + clang); see `design/multi-arch-build.md` §5.
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
 - **Push target**: `codeberg.org/lawlietr/redlib` (lowercase namespace). Tags: `latest` + `<git-sha>` (multi-platform manifest lists), plus per-platform `amd64`/`arm64`. Login uses the `CODEBERG_PAT` repo secret (write:packages), username `Lawlietr` (the Codeberg account, not the local Forgejo owner).
 - Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 30GB runner box clean
@@ -74,8 +53,8 @@ Manual trigger: GitHub Actions → "Build container images" → "Run workflow"
 ### Structure
 
 Multi-stage build:
-1. **Builder**: Clone Redlib (upstream `main`), build a fully static glibc binary with Cargo (wreq/BoringSSL needs glibc; musl is a dead end)
-2. **Release**: Copy binary + CA bundle, `scratch` runtime
+1. **Builder**: `rust:1.98-slim-bookworm` — clone upstream `main`, `cargo rustc` with `+crt-static`/`relocation-model=static`/`link-args=-static` (flags only on final crate, not in `.cargo/config.toml`)
+2. **Release**: `scratch` — copy binary + CA bundle
 
 ### Build Arguments
 
@@ -84,30 +63,21 @@ Multi-stage build:
 | `REDLIB_SRC` | `https://github.com/redlib-org/redlib.git` | Redlib git source |
 | `REDLIB_BRANCH` | `main` | Branch to clone |
 
-### Best Practices
+### Conventions
 
 - `apt-get --no-install-recommends`, drop package lists after install
-- Use `--locked` for Cargo builds
-- Fully static binary via `cargo rustc --` flags (`+crt-static`, `relocation-model=static`, `link-args=-static`) — only on the final crate; putting them in `.cargo/config.toml` breaks proc-macro builds
-- Non-root user (UID 1000:1000)
-- Minimal scratch base for release stage
-- Explicit ARG defaults
-
-### Code Style
-
-- Uppercase for all ARGs
-- Concise comments, descriptive
-- Group related operations in single RUN
+- `--locked` for Cargo builds; `--depth 1` for git clone
+- Static flags only on final crate via `cargo rustc --` (proc-macro breakage if in `.cargo/config.toml`)
+- Non-root user (UID 1000:1000), `scratch` release base
+- Uppercase ARGs, concise comments, group related ops in single RUN
 
 ## Project-Specific Notes
 
-### Redlib Source Management
+### Redlib Source
 
-- Source: https://github.com/redlib-org/redlib.git
-- `REDLIB_BRANCH=main`. As of 2026-09-18 the formerly-baked PRs (#506, #521, #560, #539, #549) are all merged into upstream `main` (up to `8167e00` "Merge PR#549"), so no manual baking is needed — `main` alone contains everything. The old bake chain was retired for this reason (it had also rotted: PR-branch `Cargo.lock` checksum drift broke `cargo fetch`, and the pr509-based tree silently kept pre-wreq `client.rs`).
-- #509 (hyper-tls backend) was never needed on the wreq-based main — superseded by main's wreq migration; do not re-add it.
+- Source: https://github.com/redlib-org/redlib.git, `REDLIB_BRANCH=main`
+- All formerly-baked PRs merged into upstream `main` (2026-09-18); bake chain retired
 - Build: `cargo build --release --locked --bin redlib`
-- Static binary for minimal footprint
 
 ### Environment Variables (Runtime)
 
@@ -115,64 +85,15 @@ Multi-stage build:
 - `REDLIB_ENABLE_RSS` - Optional; off by default. Turns on RSS feeds.
 - `REDLIB_FULL_URL` - Optional; builds absolute article URLs only for RSS feeds (only meaningful when RSS is on). Not needed for normal browsing.
 
-### Current State
 
-- Binary: `/redlib` in container
-- Port: 8080 (exposed)
-- Health checks: Not configured (add if needed)
 
-## Testing
 
-### Build Validation
 
-```bash
-# Validate build without push
-docker build --target builder -t redlib-test .
+## Conventions
 
-# Test binary execution
-docker run --rm --entrypoint /redlib redlib-test --help
-```
-
-### Container Testing
-
-```bash
-# Run and verify
-docker run -p 8080:8080 -d --name redlib-test redlib
-docker ps
-docker logs redlib-test
-```
-
-### Cross-Platform
-
-```bash
-# Build for different architectures
-docker buildx build --platform linux/amd64,linux/arm64 -t redlib .
-```
-
-## Code Style Guidelines
-
-This repository contains Dockerfiles and build scripts (no Rust source in this repo):
-
-### Dockerfile Conventions
-
-- Follow official Dockerfile best practices
-- Multi-stage builds for smaller images
-- Explicit ARG defaults
-- Clear stage names
-- Sparse comments
-
-### Shell Script Conventions
-
-- Use `set -euo pipefail` for error handling
-- Quote variables: `"${VAR}"`
-- Use `&&` for command chaining in single RUN
-- Prefer `printf` over `echo` for portability
-
-### Git Operations
-
-- Shallow clone: `--depth 1` (no PR baking anymore; bump only if a merge chain is re-introduced)
-- Verify upstream main compiles (`cargo build --bin redlib`) when bumping `REDLIB_BRANCH`
-- Set user email/name for git operations: `-c user.email="builder" -c user.name="builder"`
+- Shell: `set -euo pipefail`, quote variables, `&&` chaining, `printf` over `echo`
+- Git: `--depth 1`, verify upstream compiles on branch bump
+- CI scripts: `trap 'docker image prune -a -f' EXIT` for cleanup
 
 ## External References
 

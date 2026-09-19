@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64，Plan B 已定）**：核心原則**編譯在 12 runner（Ubox-02）跑，最後 push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` 多平台 manifest list、各平台 tag。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（boring-sys2 C++ 檔缺這會用 host g++ 編 → arm 的 "file in wrong format"），2026-09-19 commit `fc555ee`；(2) ⏳ runner 容器（Alpine）需擴建：`apk add` 安裝 cross-compiler（`gcc-aarch64-linux-gnu` 或 Alpine musl-native cross）、`clang`/`libclang-dev`（bindgen）、`rustup` + cargo（runner 原本沒有）；(3) ⏳ 擴建後重建 runner 容器、觸發 workflow 實跑兩平台；(4) ⏳ codeberg 多平台 manifest 實測驗證（`docker buildx imagetools inspect`）。工具鏈安裝與驗證**全在 12 runner 執行**，本地不裝任何工具鏈、不碰本地 Forgejo。實作細節見 `design/multi-arch-build.md`。
+- [ ] **多平台建置（amd64 + arm64，Plan B）**：核心原則**編譯在 12 runner（Ubox-02）跑，push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` manifest list。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（commit `fc555ee`）；(2) ⏳ runner（Alpine）需擴建：`apk add` cross-compiler + clang + rustup/cargo；(3) ⏳ 重建 runner → 觸發 workflow 實跑兩平台；(4) ⏳ codeberg manifest 實測驗證。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
