@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64，Plan B）**：核心原則**編譯在 12 runner（Ubox-02）跑，push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` manifest list。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（commit `fc555ee`）；(2) ✅ runner Dockerfile 已改為 Debian + 工具鏈（cross-compiler + clang + cmake + g++ + make + musl-g++ wrapper + aarch64-musl 真正 cross-compiler from musl-cross-make）；(3) ✅ runner 重建完成並 mount musl-aarch64 工具鏈；(4) ⏳ push `build_and_push.sh`（CC/AR 改 musl toolchain）→ workflow 實跑兩平台；(5) ⏳ codeberg manifest 實測驗證。實作細節見 `design/multi-arch-build.md`。
+- [x] **多平台建置（amd64 + arm64，Plan B）**：核心原則**編譯在 12 runner（Ubox-02）跑，push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` manifest list。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*` + `BINDGEN_EXTRA_CLANG_ARGS`；(2) ✅ runner Dockerfile 改為 Debian trixie（glibc 2.41）+ 完整工具鏈（musl-cross-make aarch64-musl + buildx/compose plugins + docker CLI）；(3) ✅ runner 重建完成並 mount musl-aarch64 工具鏈；(4) ✅ workflow 實跑兩平台成功；(5) ✅ codeberg manifest 實測驗證（`codeberg.org/lawlietr/redlib:latest` 含 amd64 + arm64）。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
@@ -35,6 +35,7 @@
 
 ## 近期完成（保留最近 10 筆）
 
+- [x] **多平台建置（amd64 + arm64，Plan B）定案**（2026-09-20）：runner 12 機改為 Debian trixie + musl-cross-make aarch64-musl 真正 cross-compiler + buildx/compose plugins；`build_and_push.sh` 補 `CXX_*`/`AR_*`/`BINDGEN_EXTRA_CLANG_ARGS`；workflow 實跑成功，`codeberg.org/lawlietr/redlib:latest` manifest list 含 amd64 + arm64（musl 靜態）
 - [x] 12 機磁碟擴至 30GB（原 10GB，2026-09-18）：設計檔、`disk_guard.sh`（守門 2.5G→6G）、`build.yml`、AGENTS.md 已全部更新；多架構一次編也绰有餘裕，仍保留逐檔 prune 習慣
 - [x] 接線 redlib build workflow 並完成首次 build（2026-09-18：CI 首次完整 build+push 到 `codeberg.org/lawlietr/redlib:latest` 成功，映像公開可匿名 pull；runner 12 機、docker+BuildKit、cargo cache Tier 2）
 - [x] 部署 Forgejo Runner（Docker 形式，12 機 192.168.1.12，`/opt/forgejo-runner/` 單機 compose，label `redlib:host`，2026-09-18 上線）；產物只推 `codeberg.org`，本地 Forgejo/12 不保留
