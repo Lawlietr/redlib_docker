@@ -94,6 +94,5 @@ docker buildx imagetools create \
   "${IMAGE}:amd64" "${IMAGE}:arm64"
 
 echo "Done. Published:"
-echo "  ${IMAGE}:latest             (multi-platform manifest list)"
+echo "  ${IMAGE}:latest             (multi-platform manifest list, amd64 + arm64)"
 echo "  ${IMAGE}:${GIT_SHA}         (multi-platform manifest list, reproducible pin)"
-echo "  ${IMAGE}:amd64 / :arm64     (per-platform)"

@@ -9,7 +9,8 @@ A lightweight Reddit alternative, deployed via Docker.
   #506/#521/#560/#539/#549 have been merged into upstream `main`, while #509 (hyper-tls)
   was superseded by the wreq migration on `main` (#544, which emulates common TLS fingerprints).
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
-- CI automatically builds and pushes a prebuilt image to **`codeberg.org/lawlietr/redlib:latest`**.
+- CI automatically builds and pushes prebuilt images to **`codeberg.org/lawlietr/redlib`**,
+  supporting both **`linux/amd64`** and **`linux/arm64`** platforms.
 
 ## Deployment
 
@@ -75,12 +76,10 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 ```
 
 > **Reproducibility note**: The Dockerfile clones the state of upstream `main`
-> **at build time**. Our pushed `latest` was built on 2026-09-18 from upstream `main`
-> (`8167e00`); building yourself yields "the same build process + that day's redlib version",
+> **at build time**. Our pushed `latest` is built from a specific version of upstream `main`;
+> building yourself yields "the same build process + that day's redlib version",
 > but is not guaranteed to be bit-for-bit identical to our image. To pin a fixed version,
 > use `--build-arg REDLIB_BRANCH=<commit or tag>`.
-> Also, build artifacts are native to the host architecture (CI pushes amd64; an arm64
-> machine builds arm64).
 
 ## Environment Variables
 
@@ -90,11 +89,25 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | `REDLIB_ENABLE_RSS` | (off) | Optional. Off by default. Turns on RSS feeds. |
 | `REDLIB_FULL_URL` | (empty) | Optional. Only used to build absolute article URLs when RSS is enabled. Points article links to this host. Not needed for normal browsing. |
 
+## Image Tags
+
+All tags are multi-platform manifest lists (`linux/amd64` + `linux/arm64`):
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Latest build (rolling tag) |
+| `<git-sha>` | Reproducible version pinned to a git commit SHA |
+
+> **Note**: `amd64` and `arm64` tags also exist in the registry but are used
+> internally for CI manifest merging. Users should pull `latest` or `<git-sha>`.
+
 ## CI/CD
 
 - Trigger: changes to `Dockerfile` or a manual "Run workflow".
 - Execution environment: a locally self-hosted Forgejo Runner (`redlib` label) with BuildKit + cargo cache mount (incremental builds).
-- Push target: `codeberg.org/lawlietr/redlib:<tag>` (amd64).
+- Push target: `codeberg.org/lawlietr/redlib`. Each build produces two multi-platform
+  manifest lists — `latest` (rolling) and `<git-sha>` (reproducible pin) — both containing
+  `linux/amd64` and `linux/arm64`.
 - Details and troubleshooting: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`.
 
 ## Troubleshooting

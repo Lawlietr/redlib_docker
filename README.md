@@ -9,7 +9,8 @@
   #506/#521/#560/#539/#549 已合併進 upstream main；#509（hyper-tls）則被
   main 的 wreq 遷移（#544，模擬常見 TLS 指紋）取代。
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
-- CI 自動建置並推送預編譯映像到 **`codeberg.org/lawlietr/redlib:latest`**。
+- CI 自動建置並推送預編譯映像到 **`codeberg.org/lawlietr/redlib`**，
+  支援 **`linux/amd64`** 與 **`linux/arm64`** 雙平台。
 
 ## 部署方式
 
@@ -74,11 +75,10 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 ```
 
 > **可重現性說明**：Dockerfile 在 build 時 clone 上游 `main` 的**當下狀態**。
-> 我們推送的 `latest` 是 2026-09-18 以上游 `main`（`8167e00`）build 的，
+> 我們推送的 `latest` 是以上游 `main` 的某個版本 build 的，
 > 你自己 build 會得到「同一套構建流程 + 當天的 redlib 版本」，
 > 與我們的映像不保證 bit-for-bit 相同。需要固定版本時請用
 > `--build-arg REDLIB_BRANCH=<commit 或 tag>` pin 住。
-> 另外 build 產物是本機 native 架構（CI 推 amd64；arm64 機器 build 出 arm64）。
 
 ## 環境變數
 
@@ -88,11 +88,25 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | `REDLIB_ENABLE_RSS` | （關） | 選用，預設關閉。開啟後產生 RSS 訂閱源。 |
 | `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS 時使用，用來產生文章的絕對連結（指向本網域）。一般瀏覽不需設定。 |
 
+## 映像標籤（Tags）
+
+所有標籤皆為多平台 manifest list（`linux/amd64` + `linux/arm64`）：
+
+| 標籤 | 說明 |
+|------|------|
+| `latest` | 最新建置（rolling tag） |
+| `<git-sha>` | 以 git commit SHA 標記的可重現版本 |
+
+> **注意**：`amd64` 與 `arm64` 標籤也存在於 registry 中，但僅供 CI 內部
+> manifest merge 使用，不建議使用者直接拉取。
+
 ## CI/CD
 
 - 觸發：`Dockerfile` 變動或手動 "Run workflow"。
 - 執行環境：本機自架 Forgejo Runner（`redlib` label），BuildKit + cargo cache mount（增量建置）。
-- 推送目標：`codeberg.org/lawlietr/redlib:<tag>`（amd64）。
+- 推送目標：`codeberg.org/lawlietr/redlib`，
+  每輪建置產生 `latest`（rolling）與 `<git-sha>`（可重現 pin）兩個多平台 manifest list，
+  同時包含 `linux/amd64` 與 `linux/arm64`。
 - 細節與故障排除：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
 
 ## 故障排除
