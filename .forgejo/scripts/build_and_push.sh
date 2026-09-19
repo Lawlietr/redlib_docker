@@ -23,12 +23,11 @@ REDLIB_SRC="${REDLIB_SRC:-https://github.com/redlib-org/redlib.git}"
 REDLIB_BRANCH="${REDLIB_BRANCH:-main}"
 
 # Cross C toolchain for the musl targets.
-#   apt packages: gcc-aarch64-linux-gnu
-# rustc's musl targets ship their own static musl libc, so musl-tools is not
-# required for the build itself.
-export CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc
-export CXX_aarch64_unknown_linux_musl=aarch64-linux-gnu-g++
+#   aarch64-linux-musl-gcc: wrapper around aarch64-linux-gnu-gcc with
+#   --sysroot pointing to musl, so it can compile musl target C code.
+export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc
+export CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++
 export AR_aarch64_unknown_linux_musl=aarch64-linux-gnu-ar
 # NOTE: CXX_*/AR_* are required — boring-sys2 ships a C++ source
 # (encrypted_client_hello.cc). The cc crate falls back to the HOST g++ if
