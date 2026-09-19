@@ -29,7 +29,7 @@
 
 ## P3 待辦
 
-- （目前無）
+- [ ] GitHub Actions 三平台（multi-arch）同步：待 P0 多平台定案且有 GitHub repo 後，把 amd64/arm64/armv7 的 build+push 同步到 `ghcr.io`（與 `.forgejo` 三平台流程對稱）。這與 P2（把現行單 arch 流程 mirror 到 ghcr.io，workflow 已寫好）是**不同項目**。實作細節見 `design/multi-arch-build.md` §11。
 
 ---
 
