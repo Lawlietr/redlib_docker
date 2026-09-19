@@ -28,7 +28,7 @@ REDLIB_BRANCH="${REDLIB_BRANCH:-main}"
 export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc
 export CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++
-export AR_aarch64_unknown_linux_musl=aarch64-linux-gnu-ar
+export AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar
 # NOTE: CXX_*/AR_* are required — boring-sys2 ships a C++ source
 # (encrypted_client_hello.cc). The cc crate falls back to the HOST g++ if
 # CXX_<target> is unset, producing x86_64 .cc.o files that the aarch64

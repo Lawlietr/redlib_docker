@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- [ ] **多平台建置（amd64 + arm64，Plan B）**：核心原則**編譯在 12 runner（Ubox-02）跑，push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` manifest list。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（commit `fc555ee`）；(2) ✅ runner Dockerfile 已改為 Debian + 工具鏈（cross-compiler + clang + cmake + g++ + make + musl-g++ wrapper）；(3) ⏳ 重建 runner → 觸發 workflow 實跑兩平台；(4) ⏳ codeberg manifest 實測驗證。實作細節見 `design/multi-arch-build.md`。
+- [ ] **多平台建置（amd64 + arm64，Plan B）**：核心原則**編譯在 12 runner（Ubox-02）跑，push 到 `codeberg.org/lawlietr/redlib`**。musl 靜態、原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` + `<git-sha>` manifest list。**僅 amd64 + arm64**（armv7 已移除）。進度：(1) ✅ `build_and_push.sh` 已補 `CXX_*`/`AR_*`（commit `fc555ee`）；(2) ✅ runner Dockerfile 已改為 Debian + 工具鏈（cross-compiler + clang + cmake + g++ + make + musl-g++ wrapper + aarch64-musl 真正 cross-compiler from musl-cross-make）；(3) ✅ runner 重建完成並 mount musl-aarch64 工具鏈；(4) ⏳ push `build_and_push.sh`（CC/AR 改 musl toolchain）→ workflow 實跑兩平台；(5) ⏳ codeberg manifest 實測驗證。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
