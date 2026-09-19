@@ -23,3 +23,4 @@ EXPOSE 8080
 ENTRYPOINT ["/redlib"]
 # Multi-arch manifest: amd64 + arm64
 # Updated for P0 test
+# P0 multi-arch test
