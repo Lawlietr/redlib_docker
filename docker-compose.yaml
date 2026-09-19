@@ -18,10 +18,9 @@ services:
           memory: 64M
     environment:
       - PORT=8080
-      # REDLIB_FULL_URL is OPTIONAL and OFF by default. It only affects RSS
-      # feeds (enable with REDLIB_ENABLE_RSS=on): it prefixes article links
-      # with this instance's public URL. Leave unset unless you need that.
-      #   - REDLIB_FULL_URL=https://redlib.example.com
+      # RSS is OFF by default. REDLIB_FULL_URL only matters when RSS is on.
+      #   - REDLIB_ENABLE_RSS=on            # turn on RSS feeds (optional)
+      #   - REDLIB_FULL_URL=https://redlib.example.com  # article links -> this host (optional, RSS only)
     networks:
       - redlib-network
 

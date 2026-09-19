@@ -106,7 +106,8 @@ Multi-stage build:
 ### Environment Variables (Runtime)
 
 - `PORT` - Server port (default: 8080)
-- `REDLIB_FULL_URL` - Optional; builds absolute URLs only for RSS feeds (enable with REDLIB_ENABLE_RSS=on). Not needed for normal browsing.
+- `REDLIB_ENABLE_RSS` - Optional; off by default. Turns on RSS feeds.
+- `REDLIB_FULL_URL` - Optional; builds absolute article URLs only for RSS feeds (only meaningful when RSS is on). Not needed for normal browsing.
 
 ### Current State
 

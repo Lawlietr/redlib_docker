@@ -40,7 +40,9 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional (RSS only): - REDLIB_FULL_URL=https://redlib.example.com
+      # Optional (RSS only):
+      #   - REDLIB_ENABLE_RSS=on
+      #   - REDLIB_FULL_URL=https://redlib.example.com
     restart: unless-stopped
     deploy:
       resources:
@@ -85,7 +87,8 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
-| `REDLIB_FULL_URL` | (empty) | Optional. Only used to build absolute article URLs when RSS is enabled (REDLIB_ENABLE_RSS=on). Not needed for normal browsing. |
+| `REDLIB_ENABLE_RSS` | (off) | Optional. Off by default. Turns on RSS feeds. |
+| `REDLIB_FULL_URL` | (empty) | Optional. Only used to build absolute article URLs when RSS is enabled. Points article links to this host. Not needed for normal browsing. |
 
 ## CI/CD
 

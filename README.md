@@ -40,7 +40,9 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional (RSS only): - REDLIB_FULL_URL=https://redlib.example.com
+      # Optional (RSS only):
+      #   - REDLIB_ENABLE_RSS=on
+      #   - REDLIB_FULL_URL=https://redlib.example.com
     restart: unless-stopped
     deploy:
       resources:
@@ -83,7 +85,8 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `PORT` | 8080 | 伺服器端口 |
-| `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS（`REDLIB_ENABLE_RSS=on`）時使用，用來產生文章的絕對連結。一般瀏覽不需設定。 |
+| `REDLIB_ENABLE_RSS` | （關） | 選用，預設關閉。開啟後產生 RSS 訂閱源。 |
+| `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS 時使用，用來產生文章的絕對連結（指向本網域）。一般瀏覽不需設定。 |
 
 ## CI/CD
 
