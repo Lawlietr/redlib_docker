@@ -77,21 +77,21 @@ for entry in "${ARCHES[@]}"; do
   docker push "${local_img}"
 
   # Prune this arch's local image to keep disk peak low (registry keeps the copy).
-  docker image prune -a -f
+  # Skip pruning the last arch — the manifest merge needs the per-platform images.
+  if [ "${tag}" != "${ARCHES[-1]%%:*}" ]; then
+    docker image prune -a -f
+  fi
   rm -rf "dist-${tag}"
 done
 
 # Merge the two per-arch images into a multi-platform manifest list:
 #   latest (rolling) + <git-sha> (reproducible pin). Per-platform tags already pushed.
+# `imagetools create` pulls from registry and pushes the manifest list in one step.
 echo "Merging manifest: ${IMAGE}:latest + ${IMAGE}:${GIT_SHA}"
 docker buildx imagetools create \
   -t "${IMAGE}:latest" \
   -t "${IMAGE}:${GIT_SHA}" \
   "${IMAGE}:amd64" "${IMAGE}:arm64"
-
-# Push the merged manifests (per-platform tags were pushed in the loop above).
-docker push "${IMAGE}:latest"
-docker push "${IMAGE}:${GIT_SHA}"
 
 echo "Done. Published:"
 echo "  ${IMAGE}:latest             (multi-platform manifest list)"
