@@ -22,7 +22,6 @@ docker pull codeberg.org/lawlietr/redlib:latest
 docker run -d \
   --name redlib \
   -p 8080:8080 \
-  -e DOMAIN=localhost \
   --restart unless-stopped \
   codeberg.org/lawlietr/redlib:latest
 ```
@@ -41,7 +40,7 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - DOMAIN=localhost
+      # Optional (RSS only): - REDLIB_FULL_URL=https://redlib.example.com
     restart: unless-stopped
     deploy:
       resources:
@@ -84,7 +83,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `PORT` | 8080 | 伺服器端口 |
-| `DOMAIN` | localhost | 域名設定 |
+| `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS（`REDLIB_ENABLE_RSS=on`）時使用，用來產生文章的絕對連結。一般瀏覽不需設定。 |
 
 ## CI/CD
 

@@ -22,7 +22,6 @@ docker pull codeberg.org/lawlietr/redlib:latest
 docker run -d \
   --name redlib \
   -p 8080:8080 \
-  -e DOMAIN=localhost \
   --restart unless-stopped \
   codeberg.org/lawlietr/redlib:latest
 ```
@@ -41,7 +40,7 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      - DOMAIN=localhost
+      # Optional (RSS only): - REDLIB_FULL_URL=https://redlib.example.com
     restart: unless-stopped
     deploy:
       resources:
@@ -86,7 +85,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
-| `DOMAIN` | localhost | Domain setting |
+| `REDLIB_FULL_URL` | (empty) | Optional. Only used to build absolute article URLs when RSS is enabled (REDLIB_ENABLE_RSS=on). Not needed for normal browsing. |
 
 ## CI/CD
 

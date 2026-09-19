@@ -18,7 +18,10 @@ services:
           memory: 64M
     environment:
       - PORT=8080
-      - DOMAIN=localhost
+      # REDLIB_FULL_URL is OPTIONAL and OFF by default. It only affects RSS
+      # feeds (enable with REDLIB_ENABLE_RSS=on): it prefixes article links
+      # with this instance's public URL. Leave unset unless you need that.
+      #   - REDLIB_FULL_URL=https://redlib.example.com
     networks:
       - redlib-network
 

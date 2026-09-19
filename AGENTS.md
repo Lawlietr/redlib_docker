@@ -106,7 +106,7 @@ Multi-stage build:
 ### Environment Variables (Runtime)
 
 - `PORT` - Server port (default: 8080)
-- `DOMAIN` - Domain name
+- `REDLIB_FULL_URL` - Optional; builds absolute URLs only for RSS feeds (enable with REDLIB_ENABLE_RSS=on). Not needed for normal browsing.
 
 ### Current State
 
