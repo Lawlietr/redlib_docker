@@ -17,7 +17,7 @@
 
 ## P0 待辦
 
-- （目前無）
+- [ ] **多平台建置（amd64 + arm64 + armv7，暂定 Plan B）**：把現行單一 amd64 glibc 靜態改為三平台 musl 靜態（`x86_64` / `aarch64` / `armv7`…`musleabihf`），原生交叉編譯（無 QEMU）、sequential build/push/prune、`latest` 多平台 manifest list 自動偵測架構，推 `codeberg.org/lawlietr/redlib`。子決策：(a) **B1 統一 musl（建議，會改 amd64 編譯方法需重測）vs B2 amd64 維持 glibc 零風險**；(b) **codeberg 多平台 manifest 實測驗證**。實作細節見 `design/multi-arch-build.md`。
 
 ## P1 待辦
 
