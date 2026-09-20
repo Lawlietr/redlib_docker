@@ -56,23 +56,39 @@ build script（host，redlib:host label）
 
 > **所有工具鏈安裝與建置操作全在 12 runner（Ubox-02 `forgejo-runner` 容器）執行。**
 > **本地（Code-Agent-01）不裝任何工具鏈、不碰本地 Forgejo。**
-> runner 映像基底為 Alpine（`forgejo/runner`），在現有 Dockerfile 以 `apk add` 擴建，
-> 不需重建映像基底。
+> runner 映像基底為 `rust:1.98-slim-trixie`（Debian 13 trixie, glibc 2.41），
+> 需完整安裝 musl-cross-make aarch64-musl toolchain、clang、docker CLI 等。
 
-runner Dockerfile 需增加的套件（`/opt/forgejo-runner/Dockerfile`，`apk add --no-cache`）：
+runner Dockerfile 需增加的套件（`/opt/forgejo-runner/Dockerfile`，`apt-get install -y --no-install-recommends`）：
 
 ```
-# cross-compiler：Alpine 提供 aarch64-linux-musl-gcc（musl-native cross）
-# 或 gcc-aarch64-linux-gnu（若 Alpine 有提供；否則用 musl-native）
+# musl cross-compiler：從 musl-cross-make 建構（aarch64-linux-musl-gcc/g++/ar）
+# Debian trixie 的 musl-tools 只提供 amd64 musl wrapper，無法 cross-compile arm64
+# cross-compiler：glibc cross（用於 bindgen 解析 glibc headers）
 gcc-aarch64-linux-gnu \
 # bindgen 需要 clang/libclang（dlopen libclang）
 clang libclang-dev \
 # cmake 是 boring-sys2 build script 的依賴
 cmake \
-# rustup + cargo（build_and_push.sh 直接呼叫，runner 原本沒有）
-rustup \
-# git 原本已有，nodejs/npm 原本已有（actions/checkout 需要）
+# g++ make（boring-sys2 C++ source 需要）
+g++ make \
+# nodejs npm（actions/checkout 需要）
+nodejs npm \
+# docker CLI（trixie 的 docker.io package 不含 CLI，需從 Docker official repo 或 binary 安裝）
+docker.io \
+# git ca-certificates（git clone + TLS）
+git ca-certificates
 ```
+
+bindgen 需要 glibc multiarch headers（Debian trixie: `/usr/include/x86_64-linux-gnu`），
+需在 Dockerfile 中建立 symlink：
+```
+RUN ln -sf x86_64-linux-gnu/bits /usr/include/bits && \
+    ln -sf x86_64-linux-gnu/sys /usr/include/sys && \
+    ln -sf x86_64-linux-gnu/asm /usr/include/asm
+```
+
+`build_and_push.sh` 需設定 `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/include/x86_64-linux-gnu --target=x86_64-unknown-linux-gnu -D__LP64__"`。
 
 rust target（`rustup target add` 兩個，裝在 runner 容器內）：
 ```

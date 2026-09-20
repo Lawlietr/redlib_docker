@@ -12,7 +12,7 @@
 
 ## 已查證環境（12，唯讀）
 - Ubox-02，Ubuntu 24.04.5，x86_64，**5C / 10G RAM**（可用 ~9.9G）。
-- **磁碟 30GB（zfs subvol），已用 ~2.6G、剩 ~27G**。
+- **磁碟 30GB（zfs subvol），已用 ~3G、剩 ~27G**。
 - Docker 29.8.1，**完全乾淨：0 映像、0 容器**。無 podman/cargo/node（只有 docker + git）。
 - outbound 可達：docker.io、data.forgejo.org、codeberg.org；到 Forgejo `http://192.168.1.124:3000` 13ms。
 - 無 komodo（124 的 komodo 管理不涵蓋 12）→ 用**單機 compose 目錄**管理。
@@ -20,9 +20,9 @@
 
 ## 部署（已執行）：單機 compose 目錄
 目錄：`/opt/forgejo-runner/`（12 上）
-- `Dockerfile`：`FROM data.forgejo.org/forgejo/runner:13.1.0`（**Alpine 3.24.1**，runner 本体 45.2MB），
-  `USER root` → `apk add --no-cache nodejs npm git docker-cli ca-certificates` → `USER 1000:1000`。
-  擴建後映像 **155MB**。**不需 rust/cargo**——redlib 的 cargo build 在 `Dockerfile`（repo 根目錄）builder stage 容器內。
+- `Dockerfile`：`FROM rust:1.98-slim-trixie`（**Debian 13 trixie, glibc 2.41**），
+  `apt-get install` musl-cross-make toolchain + clang + cmake + g++ + make + nodejs + npm + docker.io + docker binary + buildx + compose plugins + git + ca-certificates → `USER 1000:1000`。
+  映像 **~1.5GB**（Debian trixie base 比 Alpine 大，但需要 trixie 的 glibc 2.41 來執行 musl-cross-make 編譯的 aarch64-musl-gcc）。
 - `config/config.yaml`：`labels: ["redlib:host"]`、`capacity: 1`、`server.connections.forgejo`
   （`url: http://192.168.1.124:3000`、uuid、**`token_url: file:/run/runner-secrets/token.txt`**——token 走獨立檔，設定檔本身不含金鑰）。
 - `credentials/token.txt`：註冊 token（**機敏，600，owner uid 1000，不進 git**）。
@@ -36,7 +36,7 @@
   （日誌 `declared successfully` 即成功）。
 
 ### 部署踩過的坑（照此文件部署時直接避開）
-1. 映像預設 **USER 1000**（非 root）→ Dockerfile 裡 `apk add` 前必須 `USER root`。
+1. 映像預設 **USER 1000**（非 root）→ Dockerfile 裡 `apt-get install` 前必須 `USER root`。
 2. entrypoint 是 `dumb-init` → compose 的 `command` 要寫**完整 binary 路徑** `/bin/forgejo-runner`，
    只寫 `daemon` 會被當成可執行檔名。
 3. token 檔若 root:600 → 容器（uid 1000）讀不到，開機報 `permission denied`；要 chown 給 1000。
