@@ -1,4 +1,5 @@
-🇹🇼 [繁體中文](README.md)
+| 🇬🇧 | English |
+| 🇹🇼 | [繁體中文](README.md) |
 
 # Redlib Docker
 
