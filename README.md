@@ -41,9 +41,15 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional (RSS only):
+      # Optional (RSS):
       #   - REDLIB_ENABLE_RSS=on
       #   - REDLIB_FULL_URL=https://redlib.example.com
+      # Optional (instance settings):
+      #   - REDLIB_DEFAULT_THEME=dark
+      #   - REDLIB_DEFAULT_FRONT_PAGE=popular
+      #   - REDLIB_DEFAULT_LAYOUT=compact
+      #   - REDLIB_BANNER=Welcome to my Redlib instance
+      # See .env.example for full list
     restart: unless-stopped
     deploy:
       resources:
@@ -82,11 +88,26 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 ## 環境變數
 
+參考 `.env.example` 完整清單。常見變數：
+
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `PORT` | 8080 | 伺服器端口 |
 | `REDLIB_ENABLE_RSS` | （關） | 選用，預設關閉。開啟後產生 RSS 訂閱源。 |
 | `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS 時使用，用來產生文章的絕對連結（指向本網域）。一般瀏覽不需設定。 |
+| `REDLIB_DEFAULT_THEME` | system | 預設主題（system/light/dark/black/dracula/nord/laserwave/violet/gold/rosebox/gruvboxdark/gruvboxlight） |
+| `REDLIB_DEFAULT_FRONT_PAGE` | default | 預設首頁（default/popular/all） |
+| `REDLIB_DEFAULT_LAYOUT` | card | 預設版面（card/clean/compact） |
+| `REDLIB_DEFAULT_POST_SORT` | hot | 預設文章排序（hot/new/top/rising/controversial） |
+| `REDLIB_DEFAULT_COMMENT_SORT` | confidence | 預設留言排序（confidence/top/new/controversial/old） |
+| `REDLIB_DEFAULT_SHOW_NSFW` | off | 預設顯示 NSFW 內容 |
+| `REDLIB_DEFAULT_FILTERS` | （空） | 預設過濾 subreddit（格式：sub1+sub2+sub3） |
+| `REDLIB_DEFAULT_SUBSCRIPTIONS` | （空） | 預設訂閱 subreddit（格式：sub1+sub2+sub3） |
+| `REDLIB_BANNER` | （空） | 執行個體橫幅訊息 |
+| `REDLIB_SFW_ONLY` | off | SFW-only 模式 |
+| `REDLIB_ROBOTS_DISABLE_INDEXING` | off | 關閉搜尋引擎索引 |
+
+完整清單：https://github.com/redlib-org/redlib/blob/main/.env.example
 
 ## 映像標籤（Tags）
 

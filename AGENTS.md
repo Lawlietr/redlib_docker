@@ -81,9 +81,26 @@ Multi-stage build:
 
 ### Environment Variables (Runtime)
 
-- `PORT` - Server port (default: 8080)
-- `REDLIB_ENABLE_RSS` - Optional; off by default. Turns on RSS feeds.
-- `REDLIB_FULL_URL` - Optional; builds absolute article URLs only for RSS feeds (only meaningful when RSS is on). Not needed for normal browsing.
+參考 `.env.example` 完整清單。常見變數：
+
+| 變數 | 預設 | 說明 |
+|------|------|------|
+| `PORT` | `8080` | 伺服器埠 |
+| `REDLIB_ENABLE_RSS` | (off) | 啟用 RSS 訂閱源 |
+| `REDLIB_FULL_URL` | (empty) | RSS 絕對連結（僅在啟用 RSS 時需要） |
+| `REDLIB_DEFAULT_THEME` | `system` | 預設主題（system/light/dark/black/dracula/nord/laserwave/violet/gold/rosebox/gruvboxdark/gruvboxlight） |
+| `REDLIB_DEFAULT_FRONT_PAGE` | `default` | 預設首頁（default/popular/all） |
+| `REDLIB_DEFAULT_LAYOUT` | `card` | 預設版面（card/clean/compact） |
+| `REDLIB_DEFAULT_POST_SORT` | `hot` | 預設文章排序（hot/new/top/rising/controversial） |
+| `REDLIB_DEFAULT_COMMENT_SORT` | `confidence` | 預設留言排序（confidence/top/new/controversial/old） |
+| `REDLIB_DEFAULT_SHOW_NSFW` | `off` | 預設顯示 NSFW 內容 |
+| `REDLIB_DEFAULT_FILTERS` | (empty) | 預設過濾 subreddit（格式：sub1+sub2+sub3） |
+| `REDLIB_DEFAULT_SUBSCRIPTIONS` | (empty) | 預設訂閱 subreddit（格式：sub1+sub2+sub3） |
+| `REDLIB_BANNER` | (empty) | 執行個體橫幅訊息 |
+| `REDLIB_SFW_ONLY` | `off` | SFW-only 模式 |
+| `REDLIB_ROBOTS_DISABLE_INDEXING` | `off` | 關閉搜尋引擎索引 |
+
+完整清單：https://github.com/redlib-org/redlib/blob/main/.env.example
 
 
 
