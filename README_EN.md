@@ -41,15 +41,13 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional (RSS):
-      #   - REDLIB_ENABLE_RSS=on
-      #   - REDLIB_FULL_URL=https://redlib.example.com
-      # Optional (instance settings):
+      # Optional (see .env.example for full list):
       #   - REDLIB_DEFAULT_THEME=dark
       #   - REDLIB_DEFAULT_FRONT_PAGE=popular
       #   - REDLIB_DEFAULT_LAYOUT=compact
+      #   - REDLIB_DEFAULT_POST_SORT=hot
+      #   - REDLIB_DEFAULT_SHOW_NSFW=on
       #   - REDLIB_BANNER=Welcome to my Redlib instance
-      # See .env.example for full list
     restart: unless-stopped
     deploy:
       resources:
@@ -94,8 +92,6 @@ See `.env.example` for the full list. Common variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
-| `REDLIB_ENABLE_RSS` | (off) | Optional. Off by default. Turns on RSS feeds. |
-| `REDLIB_FULL_URL` | (empty) | Optional. Only used to build absolute article URLs when RSS is enabled. Points article links to this host. |
 | `REDLIB_DEFAULT_THEME` | system | Default theme (system/light/dark/black/dracula/nord/laserwave/violet/gold/rosebox/gruvboxdark/gruvboxlight) |
 | `REDLIB_DEFAULT_FRONT_PAGE` | default | Default front page (default/popular/all) |
 | `REDLIB_DEFAULT_LAYOUT` | card | Default layout (card/clean/compact) |

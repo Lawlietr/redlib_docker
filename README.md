@@ -41,15 +41,13 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional (RSS):
-      #   - REDLIB_ENABLE_RSS=on
-      #   - REDLIB_FULL_URL=https://redlib.example.com
-      # Optional (instance settings):
+      # Optional (see .env.example for full list):
       #   - REDLIB_DEFAULT_THEME=dark
       #   - REDLIB_DEFAULT_FRONT_PAGE=popular
       #   - REDLIB_DEFAULT_LAYOUT=compact
+      #   - REDLIB_DEFAULT_POST_SORT=hot
+      #   - REDLIB_DEFAULT_SHOW_NSFW=on
       #   - REDLIB_BANNER=Welcome to my Redlib instance
-      # See .env.example for full list
     restart: unless-stopped
     deploy:
       resources:
@@ -93,8 +91,6 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `PORT` | 8080 | 伺服器端口 |
-| `REDLIB_ENABLE_RSS` | （關） | 選用，預設關閉。開啟後產生 RSS 訂閱源。 |
-| `REDLIB_FULL_URL` | （空） | 選用，僅在啟用 RSS 時使用，用來產生文章的絕對連結（指向本網域）。一般瀏覽不需設定。 |
 | `REDLIB_DEFAULT_THEME` | system | 預設主題（system/light/dark/black/dracula/nord/laserwave/violet/gold/rosebox/gruvboxdark/gruvboxlight） |
 | `REDLIB_DEFAULT_FRONT_PAGE` | default | 預設首頁（default/popular/all） |
 | `REDLIB_DEFAULT_LAYOUT` | card | 預設版面（card/clean/compact） |

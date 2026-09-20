@@ -86,8 +86,6 @@ Multi-stage build:
 | 變數 | 預設 | 說明 |
 |------|------|------|
 | `PORT` | `8080` | 伺服器埠 |
-| `REDLIB_ENABLE_RSS` | (off) | 啟用 RSS 訂閱源 |
-| `REDLIB_FULL_URL` | (empty) | RSS 絕對連結（僅在啟用 RSS 時需要） |
 | `REDLIB_DEFAULT_THEME` | `system` | 預設主題（system/light/dark/black/dracula/nord/laserwave/violet/gold/rosebox/gruvboxdark/gruvboxlight） |
 | `REDLIB_DEFAULT_FRONT_PAGE` | `default` | 預設首頁（default/popular/all） |
 | `REDLIB_DEFAULT_LAYOUT` | `card` | 預設版面（card/clean/compact） |
