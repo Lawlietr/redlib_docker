@@ -1,4 +1,6 @@
-[中文](README.md)
+<div align="right">
+  🇹🇼 [繁體中文](README.md)
+</div>
 
 # Redlib Docker
 
