@@ -1,0 +1,6 @@
+# 本機分析用暫存區（fork patch 分析的 clone / diff）
+.tmp_fork_analysis/
+
+# OS / editor
+.DS_Store
+*~

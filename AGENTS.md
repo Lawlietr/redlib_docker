@@ -9,7 +9,7 @@ This repository's own configuration files and scripts are licensed under the MIT
 ## Repository Layout
 
 - `Dockerfile` / `docker-compose.yaml` (repo root) — the redlib image build. Single-app repo; the former `redlib/` app subdirectory (dir name = image name) was retired 2026-09-18.
-- `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Records what is done and what is pending; keeps implementation details out. See the priority legend at the top of the file.
+- `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Each entry = 做什麼 + 為什麼/範圍 + 優先級 + 指向 `design/` 的連結。禁止出現在此：redlib 源碼檔案/代碼標識符、route 路徑、env 變數名、分步流程、驗證步驟（這些一律入 `design/` 並由 TODO 引用；repo 自有檔案如 `build_and_push.sh` 可提）。優先級定義見檔頭。
 - `design/` — **Implementation guidelines** for each task (deployment steps, config, gotchas). Detailed/longer explanations live here, referenced from `TODO.md`. Keep sensitive info (registration `uuid`/`token`, `CODEBERG_PAT`) out of these files; use placeholders and note where the real value must be entered.
 
 ## Build Commands
@@ -81,7 +81,7 @@ Multi-stage build:
 
 ### Environment Variables (Runtime)
 
-參考 `.env.example` 完整清單。常見變數：
+常見變數（完整清單見 repo 內 `.env.example` 與上游文件）：
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
@@ -97,8 +97,6 @@ Multi-stage build:
 | `REDLIB_BANNER` | (empty) | 執行個體橫幅訊息 |
 | `REDLIB_SFW_ONLY` | `off` | SFW-only 模式 |
 | `REDLIB_ROBOTS_DISABLE_INDEXING` | `off` | 關閉搜尋引擎索引 |
-
-完整清單：https://github.com/redlib-org/redlib/blob/main/.env.example
 
 
 
