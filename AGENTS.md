@@ -33,11 +33,11 @@ Test build: `docker build --target builder -t redlib-test .` then
 
 - **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
-- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Extends Alpine with `apk add` (cross-compiler + rustup + clang); see `design/multi-arch-build.md` §5.
+- **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Based on `rust:1.98-slim-trixie` (Debian 13) with musl-cross-make aarch64-musl toolchain, clang, cmake, docker CLI, buildx, and compose plugins; see `design/multi-arch-build.md` §5.
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
 - **Push target**: `codeberg.org/lawlietr/redlib` (lowercase namespace). Tags: `latest` + `<git-sha>` (multi-platform manifest lists), plus per-platform `amd64`/`arm64`. Login uses the `CODEBERG_PAT` repo secret (write:packages), username `Lawlietr` (the Codeberg account, not the local Forgejo owner).
 - Disk guard (`.forgejo/scripts/disk_guard.sh`) + `docker image prune -a` after push keep the 30GB runner box clean
-- Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*` for the arm target — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)". Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
+- Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*`/`CC_*`/`BINDGEN_EXTRA_CLANG_ARGS` for the arm target — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)"; bindgen needs glibc multiarch headers on Debian trixie. Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 
 ### GitHub Actions Workflow (guarded backup)
