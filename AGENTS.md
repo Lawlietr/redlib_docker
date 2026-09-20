@@ -73,6 +73,10 @@ Multi-stage build:
 
 ## Project-Specific Notes
 
+### Repository Remotes
+
+本 repo 雙宿：`origin` = 本地 Forgejo（`lawliet/redlib_docker`），`codeberg` = `codeberg.org/Lawlietr/redlib_docker`（正式 remote，非僅映像 registry 鏡像）。**每次 push 都推兩個 remote**。
+
 ### Redlib Source
 
 - Source: https://github.com/redlib-org/redlib.git, `REDLIB_BRANCH=main`
