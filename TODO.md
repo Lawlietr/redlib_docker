@@ -1,47 +1,52 @@
 # TODO
 
-本文件**只**記錄工作進度與優先級。實作細節（步驟、設定、注意事項）見 `design/` 目錄，不贅於此。
+> 本檔只放**工作進度與優先級**。每個項目 = 做什麼 + 為什麼/範圍 + 優先級，並連結到 `design/` 的實作指引。
+> 詳細說明、踩坑、部署步驟一律放 `design/`，不在這裡重複。
+> 本專案的 CI：本地 Forgejo（多架構發佈）+ GitHub Actions（amd64 編譯、ghcr 鏡像）。
 
 ## 優先級定義
-- **P0** 阻斷 —— 擋住其他工作的東西
-- **P1** 高 —— 應儘速處理
-- **P2** 中 —— 排程進行
-- **P3** 低 —— 順便處理
 
-## 維護規則
-- 本檔是「活板」：待辦（P0–P3）永遠在頂部；已完成只放在下方「近期完成」。
-- 「近期完成」保留最近 **10 筆**；超過的剪掉。已完成工作的完整記錄在 `git history` 與 `design/` 裡，不需在此重複貼。
-- 每次工作結束時 prune 一次。
+| 級 | 含義 |
+|----|------|
+| **P0** | 緊急且重要：阻塞部署/上線、影響正確性或穩定性，需立即處理 |
+| **P1** | 重要不緊急：影響可靠性/可觀測性/品質，近期要推但非阻塞 |
+| **P2** | 有价值但可排後：改善體驗、重構、非阻塞的補齊 |
+| **P3** | 想法/可選：nice-to-have、長期評估項 |
 
----
+## 維護慣例
+- 完成項移到「近期完成」並標日期；**待辦一律放上方對應優先級**，不要只寫在「近期完成」的敘述裡。
+- 新增待辦時直接開新條目（優先級由你指定或先問）。
+- 每條待辦保持「做什麼 + 為什麼/範圍 + 優先級 + design 連結」四要素，細節不展開。
 
-## P0 待辦
+## P1 — 上游未合併 PR 的 bake 鏈（Tier 1）
+- **做什麼**：把 5 支仍未 upstream 合併的上游 PR（#549/#542/#521/#560/#539）重新 bake 進建置來源；清單放 `redlib-prs.txt`（單一來源），套用邏輯放 `.build/apply_redlib_prs.sh`，由 `Dockerfile` 與 `.forgejo/scripts/build_and_push.sh` 共用。
+- **為什麼**：2026-09-18「已全部併入 upstream main」的判斷錯誤（引用的 commit 是我們 build 內的本地 merge tip），upstream main 至今沒有這些改動 → 現行發佈映像少了 CMAF/rich:video 影片、預設 post sort 生效、lazy-load、分享連結、0 則留言 panic 修正。
+- **狀態**：本輪已完成 —— 文件更正、bake 鏈接回兩條 build 路徑、本地 x86-64 編譯驗證、GitHub Actions 編譯驗證。
+- **優先級**：P1（已修掉功能缺口，但含一處 breaking 行為需線上確認）。
+- 細節：`design/upstream-pr-bake.md`（§2 清單、§5 漂移重做、§7 驗證、§8 風險）。
 
-- （目前無）
+## P1 — bake 上線後的功能回歸
+- **做什麼**：部署新映像後照 checklist 逐項確認（影片 proxy 新格式、0 則留言 permalink、預設 post sort 對新訪客生效、`/u/<user>/s/<id>` 分享連結、圖片 lazy-load），並確認舊影片 proxy 連結 404 的影響可接受。
+- **為什麼**：五支 PR 都是 clean merge 且不動依賴，但 clean merge ≠ 語意正確；其中影片 proxy 路徑變更是 breaking。
+- **優先級**：P1。
+- 細節：`design/upstream-pr-bake.md` §7、§8。
 
-## P1 待辦
+## P2 — Tier 2 上游 PR 的取捨（需決策）
+- **做什麼**：逐支決定是否加入 `redlib-prs.txt`：#572（RSS 媒體，取代 #563）、#568（footer 原始碼連結）、#566（geo filter）、#577（Tor onion 入口）、#564（每頁文章數，上游 WIP）、#578（Markdown 回應）。
+- **為什麼**：都對現行 main clean-merge；但 #566/#564/#568 會新增 runtime env（需同步 `.env.example` 與 AGENTS.md 變數表），#577 與先前「不採用 fork 的 Tor」決策同類、需明確翻案。
+- **優先級**：P2（有价值、可排後；先要決策再動 build）。
+- 細節：`design/upstream-pr-bake.md` §3、§4。
 
-- [ ] **採用 fork 子集：DASH/CMAF 影片 + 小 bug fix 組**：源 `git.ptr.moe/baalajimaestro/redlib` @ `3f03e10`（parent = upstream main `a4d36e9`）；僅採用影片格式支援與 bug fix 兩類，不採用 Tor / fingerprint / 新主題。細節見 `design/fork-patch-dash-cmaf-bugfixes.md`。
+## P3 — GitHub Actions 產 arm64（對稱到 ghcr）
+- **做什麼**：讓 GitHub 端也能產 arm64（目前只 amd64），或改用與本地 Forgejo 相同的 musl 交叉編譯路徑。
+- **為什麼**：目前 ghcr 鏡像只有 amd64；多架構只由本地 runner 發佈。三條可行路（交叉工具鏈 / QEMU buildx / arm64 hosted runner）的取捨已記錄。
+- **優先級**：P3。
+- 細節：`design/github-actions-workflow.md` §5、`design/multi-arch-build.md` §11。
 
-## P2 待辦
-
-- [ ] GitHub Actions 建置流程（**中高優先**）：目前 forgejo/codeberg runner 已能編譯並推送映像；下一步把相同的 build + push 能力做到 GitHub Actions（推送 `ghcr.io`）。**workflow 已寫好（`.github/workflows/build.yml` + `.github/scripts/build_and_push.sh`），待加入 GitHub 遠端後即可跑**。實作細節見 `design/github-actions-workflow.md`。
-
-## P3 待辦
-
-- [ ] GitHub Actions 兩平台（multi-arch）同步：待有 GitHub repo 後，把 amd64/arm64 的 build+push 同步到 `ghcr.io`（與 `.forgejo` 兩平台流程對稱；與 P2 單 arch mirror 是**不同項目**）。細節見 `design/multi-arch-build.md` §11。
-
----
-
-## 近期完成（保留最近 10 筆）
-
-- [x] **多平台建置（amd64 + arm64，Plan B）定案**（2026-09-20）：runner 12 機改為 Debian trixie + musl-cross-make aarch64-musl 真正 cross-compiler + buildx/compose plugins；`build_and_push.sh` 補 `CXX_*`/`AR_*`/`BINDGEN_EXTRA_CLANG_ARGS`；workflow 實跑成功，`codeberg.org/lawlietr/redlib:latest` manifest list 含 amd64 + arm64（musl 靜態）
-- [x] 12 機磁碟擴至 30GB（原 10GB，2026-09-18）：設計檔、`disk_guard.sh`（守門 2.5G→6G）、`build.yml`、AGENTS.md 已全部更新；多架構一次編也綽有餘裕，仍保留逐檔 prune 習慣
-- [x] 接線 redlib build workflow 並完成首次 build（2026-09-18：CI 首次完整 build+push 到 `codeberg.org/lawlietr/redlib:latest` 成功，映像公開可匿名 pull；runner 12 機、docker+BuildKit、cargo cache Tier 2）
-- [x] 部署 Forgejo Runner（Docker 形式，12 機 192.168.1.12，`/opt/forgejo-runner/` 單機 compose，label `redlib:host`，2026-09-18 上線）；產物只推 `codeberg.org`，本地 Forgejo/12 不保留
-- [x] 12 機 cbgproxy 反向代理 workaround（codeberg 邊緣砍連線；含 token curl 攔截 + 重試）＋ runner 容器 docker socket 權限修正（`--group-add 990`）；要領見 `design/forgejo-runner-workflow.md` §6
-- [x] Forgejo Actions workflow（`.forgejo/workflows/build.yml`，docker / amd64 / 推 `codeberg.org/lawlietr/redlib`；GitHub ghcr workflow 保留為 guarded backup，只在 github.com 上觸發）
-- [x] Dockerfile bake PR #506 #509 #521 #560 #539 #549（`--depth 300` + `-X ours` merge 鏈）→ 2026-09-18 退役：#506/#521/#560/#539/#549 已全部併入 upstream main（至 `8167e00`），#509 被 wreq 遷移取代；Dockerfile 改回 `--depth 1` 直接 build main
-- [x] 於 `AGENTS.md` 記錄 PR bake 清單與 merge 機制（現已更新為退役狀態）
-- [x] 新增 MIT `LICENSE`（repo 自有檔 MIT；上游 redlib 保留 AGPL-3.0）
-- [x] README 重寫（拉預編譯映像 + `docker` / `docker-compose` 部署；映像參考統一小寫 `lawlietr`）；移除過期 `REDIS_URL` 描述（現行 redlib 無 Redis 支援）
+## 近期完成
+- 2026-10-07：**更正 9/18 的 bake 退役判斷**（上游 main 未含那 5 支 PR）；重新接回 bake 鏈，改用上游 PR 取代原 fork port 計畫的 C/D1 子集；新增 `redlib-prs.txt` + `.build/apply_redlib_prs.sh` 供 `Dockerfile` 與多架構腳本共用；兩條 workflow 的觸發路徑補上清單與 `.build/**`；新增 `design/upstream-pr-bake.md`。
+- 2026-10-07：**GitHub 遠端上線**（`github.com/Lawlietr/redlib_docker`，private），push 觸發 `.github/workflows/build.yml` 在 `ubuntu-latest` 原生編 amd64 並推 `ghcr.io/lawlietr/redlib:latest`；workflow 補 `packages: write`（首次建立 ghcr package 所需）。文件：`design/github-actions-workflow.md` 全面更新（含與 `.forgejo/` 多架構路的差異表）。
+- 2026-09-18：retire 所有 fork patch 與 PR bake（~~上游已全併入 main~~ **此判斷已於 2026-10-07 推翻**，見上條）；`Dockerfile` 改回純 `REDLIB_BRANCH=main` clone；`AGENTS.md` 同步。
+- 2026-09-18：repo 結構重整為單一 app（`Dockerfile`/`docker-compose.yaml` 移到 repo 根，目錄名 = 映像名慣例）；`AGENTS.md` 更新慣例與路徑。
+- 2026-09-18：多架構 build 上線（Plan B：12 機原生交叉編譯 musl + `Dockerfile.pack` + `imagetools` 合併 manifest list），雙 tag `latest`/`<git-sha>`，推 `codeberg.org/lawlietr/redlib`。文件：`design/multi-arch-build.md`、`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`。
+- 2026-09-18：文檔同步 —— `design/external-services.md`（cbgproxy 已改 `:9881`、`network_mode: host`、`http_proxy` 白名單、`REDACT_PAT=1`）、`design/ci-workflow.md`（標為存檔，主線改指 `.forgejo/`）。

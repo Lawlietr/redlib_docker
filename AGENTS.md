@@ -9,6 +9,8 @@ This repository's own configuration files and scripts are licensed under the MIT
 ## Repository Layout
 
 - `Dockerfile` / `docker-compose.yaml` (repo root) — the redlib image build. Single-app repo; the former `redlib/` app subdirectory (dir name = image name) was retired 2026-09-18.
+- `redlib-prs.txt` — **single source of truth** for the still-open upstream PRs baked into the source tree at build time. Read by both build paths (`Dockerfile` and `.forgejo/scripts/build_and_push.sh`) via `.build/apply_redlib_prs.sh`. Rationale/tiers: `design/upstream-pr-bake.md`.
+- `.build/apply_redlib_prs.sh` — fetches `pull/<n>/head` and merges each listed PR into the cloned redlib tree (`--no-ff`, no `-X ours`).
 - `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Each entry = 做什麼 + 為什麼/範圍 + 優先級 + 指向 `design/` 的連結。禁止出現在此：redlib 源碼檔案/代碼標識符、route 路徑、env 變數名、分步流程、驗證步驟（這些一律入 `design/` 並由 TODO 引用；repo 自有檔案如 `build_and_push.sh` 可提）。優先級定義見檔頭。
 - `design/` — **Implementation guidelines** for each task (deployment steps, config, gotchas). Detailed/longer explanations live here, referenced from `TODO.md`. Keep sensitive info (registration `uuid`/`token`, `CODEBERG_PAT`) out of these files; use placeholders and note where the real value must be entered.
 
@@ -31,7 +33,7 @@ Test build: `docker build --target builder -t redlib-test .` then
 
 **Workflow principle: compile on the 12 runner, then push.** Multi-arch binaries are cross-compiled natively on the runner (no QEMU), each packed into `scratch` via `Dockerfile.pack`, pushed per-platform, then merged into a multi-platform manifest list and pushed to the registry.
 
-- **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
+- **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, `redlib-prs.txt`, `.build/**`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
 - **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Based on `rust:1.98-slim-trixie` (Debian 13) with musl-cross-make aarch64-musl toolchain, clang, cmake, docker CLI, buildx, and compose plugins; see `design/multi-arch-build.md` §5.
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
@@ -40,11 +42,13 @@ Test build: `docker build --target builder -t redlib-test .` then
 - Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*`/`CC_*`/`BINDGEN_EXTRA_CLANG_ARGS` for the arm target — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)"; bindgen needs glibc multiarch headers on Debian trixie. Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 
-### GitHub Actions Workflow (guarded backup)
+### GitHub Actions Workflow (amd64 compile + ghcr mirror)
 
-`.github/workflows/build.yml` is guarded with `if: ${{ github.server_url == 'https://github.com' }}` so it only runs when the repo is hosted on GitHub:
-- **Platforms**: linux/amd64 and linux/arm64
-- **Registry**: ghcr.io/{owner}/containers:{app-name}
+`.github/workflows/build.yml` is guarded with `if: ${{ github.server_url == 'https://github.com' }}` so it only runs when the repo is hosted on GitHub (it does — see Repository Remotes):
+- **Trigger**: push to `main` touching `Dockerfile`, `redlib-prs.txt`, `.build/**`, `.github/**`; or `workflow_dispatch`
+- **Compile**: `ubuntu-latest` (native amd64), `docker build -f Dockerfile` → same source tree as the local build (main + `redlib-prs.txt`)
+- **Registry**: `ghcr.io/{owner}/redlib:latest` via `.github/scripts/build_and_push.sh` (login uses `GITHUB_TOKEN`)
+- Multi-arch (arm64) on GitHub is a separate item: `design/multi-arch-build.md` §11
 
 Manual trigger: GitHub Actions → "Build container images" → "Run workflow"
 
@@ -53,7 +57,7 @@ Manual trigger: GitHub Actions → "Build container images" → "Run workflow"
 ### Structure
 
 Multi-stage build:
-1. **Builder**: `rust:1.98-slim-bookworm` — clone upstream `main`, `cargo rustc` with `+crt-static`/`relocation-model=static`/`link-args=-static` (flags only on final crate, not in `.cargo/config.toml`)
+1. **Builder**: `rust:1.98-slim-bookworm` — clone upstream `main` (`--depth 300`), merge the PRs listed in `redlib-prs.txt` (`.build/apply_redlib_prs.sh`), then `cargo rustc` with `+crt-static`/`relocation-model=static`/`link-args=-static` (flags only on final crate, not in `.cargo/config.toml`)
 2. **Release**: `scratch` — copy binary + CA bundle
 
 ### Build Arguments
@@ -75,12 +79,15 @@ Multi-stage build:
 
 ### Repository Remotes
 
-本 repo 雙宿：`origin` = 本地 Forgejo（`lawliet/redlib_docker`），`codeberg` = `codeberg.org/Lawlietr/redlib_docker`（正式 remote，非僅映像 registry 鏡像）。**每次 push 都推兩個 remote**。
+本 repo 三宿：`origin` = 本地 Forgejo（`lawliet/redlib_docker`），`codeberg` = `codeberg.org/Lawlietr/redlib_docker`，`github` = `github.com/Lawlietr/redlib_docker`（GitHub 是 GitHub Actions 的編譯入口）。**每次 push 都推所有 remote**。
 
 ### Redlib Source
 
 - Source: https://github.com/redlib-org/redlib.git, `REDLIB_BRANCH=main`
-- All formerly-baked PRs merged into upstream `main` (2026-09-18); bake chain retired
+- **Bake**: upstream `main` alone is NOT enough. Still-open PRs are merged on top at build time; the list lives in `redlib-prs.txt` and is applied by `.build/apply_redlib_prs.sh` (both the Dockerfile and the multi-arch CI path read the same list). Tiers, review data, drift procedure: `design/upstream-pr-bake.md`.
+  - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id`), #539 (lazy-load images).
+  - ⚠ The 2026-09-18 note claiming those PRs were "merged into upstream main (up to `8167e00`)" was **wrong**: `8167e00` was our own in-build merge tip, not an upstream commit. Upstream `main` (HEAD `a4d36e9`, 2026-04-24) contains none of them — re-verified 2026-10-07 with `git cherry` + content grep.
+  - #509 (hyper-tls) stays out: superseded by main's wreq migration.
 - Build: `cargo build --release --locked --bin redlib`
 
 ### Environment Variables (Runtime)

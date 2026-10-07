@@ -1,12 +1,14 @@
 # GitHub Actions Workflow — ghcr.io 建置流程
 
-> **狀態：workflow 已寫好，待 GitHub 遠端。** 目前 repo 只在本地 Forgejo 與 Codeberg，
-> GitHub 遠端尚未建立。workflow 已放入 `.github/workflows/build.yml`，等使用者加入
-> GitHub 遠端並 enable Actions 後即可自動跑。實作要領記錄如下。
+> **狀態：已上線（2026-10-07）。** GitHub 遠端 `github.com/Lawlietr/redlib_docker`（**private**）已建立，
+> `git remote add github ...` 已設好，`.github/workflows/build.yml` 由 push 到 `main` 自動觸發，
+> 在 `ubuntu-latest` 原生編 amd64 並推 `ghcr.io/Lawlietr/redlib:latest`。
+> 本地 Forgejo（`.forgejo/`，多架構 musl）仍是主要發佈路徑；兩條路徑的**來源內容必須一致**
+> （都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
 
 ## 1. 檔案位置
 - Workflow：`.github/workflows/build.yml`（GitHub Actions 標準路徑）。
-- 建構 / 推送腳本：`.github/scripts/build_and_push.sh`。
+- 建構 / 推送腳本：`.github/scripts/build_and_push.sh`（`docker build -f Dockerfile` → `docker push`）。
 - 與 codeberg 版 `.forgejo/workflows/build.yml` 並存，各自推到各自的登錄區。
 
 ## 2. 為什麼要 guard（重要）
@@ -22,49 +24,55 @@ if: ${{ github.server_url == 'https://github.com' }}
 
 ## 3. ghcr.io 認證
 - 用 Actions 自動生成的 `secrets.GITHUB_TOKEN`，`username` 用 `${{ github.repository_owner }}`。
-- **必須**在 workflow 層級開 `permissions: contents: write`，ghcr.io 推送才允許：
+- workflow 層級需要：
 
 ```yaml
 permissions:
   contents: write
+  packages: write
 ```
 
-- 不需要額外的 PAT / secret（`GITHUB_TOKEN` 即可）。若日後要推到 org 層級的 ghcr.io，
-  才需要額外設定 org membership 權限或用 PAT（`cr:write` scope）。
+  `packages: write` 是**首次推送建立 package** 所需（只有 `contents: write` 時，push 到不存在的
+  ghcr package 會 403）。
+- 不需要額外 PAT / secret。
+- repo 是 private → ghcr package 繼承 private，**拉映像要登入**（`docker login ghcr.io -u <gh-user> -p <PAT read:packages>`）。
+  要公開拉取：`gh repo edit Lawlietr/redlib_docker --visibility public`（或只在 Packages 裡改 visibility）。
 
 ## 4. 推送目標 / tag
-- `ghcr.io/${GITHUB_REPOSITORY_OWNER}/redlib:latest`
-- 與 codeberg 版對稱：codeberg 推 `codeberg.org/lawlietr/redlib:latest`，GitHub 推 `ghcr.io/{owner}/redlib:latest`。
-- tag 用 `latest`（視需要再加 version tag）。
+- `ghcr.io/${GITHUB_REPOSITORY_OWNER}/redlib:latest`（目前只 `latest`，沒有 `<git-sha>` tag —— 與 codeberg 版不同）。
+- codeberg 版推 `codeberg.org/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`。
 
-## 5. 架構：amd64-only（重要）
-Dockerfile 產出的是 **x86_64-unknown-linux-gnu 全靜態 glibc binary**，沒有 arm64 cross-compile。
-所以 GitHub 版與 codeberg 版一樣只用 `--platform linux/amd64`，plain `docker build` 即可，
-**不需要** QEMU / buildx（在 linux/amd64 runner 上原生 build）。
+## 5. 架構：GitHub 端 amd64-only
+GitHub 走 `docker build -f Dockerfile`，產出 **x86_64-unknown-linux-gnu 全靜態 glibc binary**，
+在 `ubuntu-latest`（amd64）原生 build，**不需要** QEMU / buildx。
 
-- 若日後要多平台（amd64 + arm64）：
-  1. 先改 Dockerfile 支援 arm64 cross-compile（`--target aarch64-unknown-linux-gnu` + qemu）。
-  2. 再加 `docker/setup-qemu-action` + `docker/setup-buildx-action`，
-     `build_and_push.sh` 改 `docker buildx build --platform ... --push`。
-  3. 目前**不做**（binary 是 amd64 static，強上 arm64 會產出錯的 image）。
+Codeberg/本地 Forgejo 端才是多架構（musl 原生交叉編譯，見 `design/multi-arch-build.md`）。
+
+要在 GitHub 上也產 arm64（尚未做，TODO P3）的三條路：
+1. **交叉編譯**：在 ubuntu-latest 裝 aarch64 musl 交叉工具鏈（Debian/Ubuntu **沒有**現成
+   `aarch64-linux-musl-gcc`，要抓 musl.cc 的 toolchain tarball 或用 `cargo-zigbuild`），
+   再沿用 `.forgejo/scripts/build_and_push.sh` 的 musl 邏輯 —— 與 12 機完全同構，最一致。
+2. **QEMU + buildx**：`setup-qemu` + `buildx --platform linux/arm64`，QEMU 下編譯很慢（12 機的经验：QEMU 曾 1 小時以上）。
+3. **arm64 public runner**：GitHub 的 arm64 hosted runner 需付費層級，目前不用。
 
 ## 6. Trigger
-- `push` 到 `main` 且變更 `Dockerfile` 或 `.github/**` 時觸發。
-- `workflow_dispatch` 手動觸發。
+- `push` 到 `main` 且變更 `Dockerfile`、`redlib-prs.txt`、`.build/**`、`.github/**` 時觸發。
+- `workflow_dispatch` 手動觸發（Actions → "Build container images" → Run workflow）。
 
-## 7. 待辦（等 GitHub 遠端）
-1. 加入 GitHub 遠端（`git remote add github ssh://git@github.com/{owner}/redlib_docker.git`）。
-2. 在 GitHub repo → Settings → Actions → General，確認 Actions 已啟用，
-   並確認 workflow permissions（`contents: write` 已寫在 workflow 內，通常夠用）。
-3. 推一次（或手動 workflow_dispatch）驗證 build + push 到 ghcr.io 成功。
-4. 驗證後把 TODO.md 的 GitHub Actions 項目標為完成。
+## 7. 驗證步驟（每次改動後）
+1. `gh run list --repo Lawlietr/redlib_docker --limit 3` → 最新 run 是否 success。
+2. `gh run view <id> --log` 裡應出現 5 行 `Merging PR #<n> -> <sha>`、無 `warning: PR ... head moved`。
+3. `docker manifest inspect ghcr.io/lawlietr/redlib` 或 `ghcr.io/<owner>/redlib` → 確認 tag 存在、platform = linux/amd64。
+4. 功能驗證清單見 `design/upstream-pr-bake.md` §7。
 
 ## 8. 與 codeberg 版的差異總覽
-| 項目 | GitHub (`.github/`) | Codeberg (`.forgejo/`) |
-|------|---------------------|------------------------|
-| runner | GitHub 託管 `ubuntu-latest` | 本機自架 `redlib:host` |
-| 登錄區 | `ghcr.io/{owner}/redlib:latest` | `codeberg.org/lawlietr/redlib:latest` |
-| 認證 | `secrets.GITHUB_TOKEN` + `contents: write` | `CODEBERG_PAT`（write:packages）secret |
-| 架構 | amd64-only（原生 build） | amd64-only（host 原生 build） |
+| 項目 | GitHub (`.github/`) | Codeberg / 本地 Forgejo (`.forgejo/`) |
+|------|---------------------|----------------------------------------|
+| runner | GitHub 託管 `ubuntu-latest` | 本機自架 `redlib`（Ubox-02 / 192.168.1.12） |
+| 編譯方式 | `docker build -f Dockerfile`（glibc 靜態，host 原生） | `cargo` musl 交叉編譯 + `Dockerfile.pack`（見 multi-arch-build.md） |
+| 架構 | amd64-only | amd64 + arm64（manifest list） |
+| 登錄區 | `ghcr.io/{owner}/redlib:latest` | `codeberg.org/lawlietr/redlib:{latest,<sha>,amd64,arm64}` |
+| 認證 | `secrets.GITHUB_TOKEN` + `contents/packages: write` | `CODEBERG_PAT`（write:packages）secret |
+| 來源內容 | 同一份 `redlib-prs.txt` bake | 同一份 `redlib-prs.txt` bake |
 | guard | `if: github.server_url == 'https://github.com'` | 無（只在本地 Forgejo 跑） |
-| 磁碟紀律 | 不需要（GitHub runner 磁碟大） | 需要（12 機 30GB host，disk_guard + prune） |
+| 磁碟紀律 | 不需要（GitHub runner 磁碟大） | 需要（30GB host，disk_guard + prune） |
