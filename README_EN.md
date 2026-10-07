@@ -5,10 +5,11 @@
 
 A lightweight Reddit alternative, deployed via Docker.
 
-- The build clones upstream `main` (https://github.com/redlib-org/redlib) directly;
-  the previously hand-baked PRs (#506/#509/#521/#560/#539/#549) no longer need baking:
-  #506/#521/#560/#539/#549 have been merged into upstream `main`, while #509 (hyper-tls)
-  was superseded by the wreq migration on `main` (#544, which emulates common TLS fingerprints).
+- The build clones upstream `main` (https://github.com/redlib-org/redlib) and then bakes the upstream PRs that are **still not merged upstream**:
+  the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539 → CMAF video + `rich:video`,
+  the 0-comment permalink panic, default post sort taking effect, user post share links, lazy-loaded images),
+  applied by `.build/apply_redlib_prs.sh`. Evidence, review tiers and the re-review procedure: `design/upstream-pr-bake.md`.
+  (#509 hyper-tls is superseded by the wreq migration on `main` (#544) and is not baked.)
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
 - CI automatically builds and pushes prebuilt images to **`codeberg.org/lawlietr/redlib`**,
   supporting both **`linux/amd64`** and **`linux/arm64`** platforms.
@@ -64,9 +65,19 @@ services:
 docker compose up -d
 ```
 
-> If you'd rather build locally from source (without waiting for CI), just use the
-> `docker-compose.yaml` in the repo root: `docker compose up -d --build`
-> (builds the root `Dockerfile` with this repo as the context).
+> The `docker-compose.yaml` in this repo supports both image sources (same service, switched with `REDLIB_IMAGE`):
+>
+> ```bash
+> # A) run the CI-built image (recommended; equivalent to the `image:` snippet above)
+> REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest docker compose up -d --pull always --no-build
+>
+> # B) build locally from source (this repo as the context for the root `Dockerfile`, bake included)
+> docker compose up -d --build
+> ```
+>
+> ⚠ While a service has a `build:` key, **a plain `docker compose up -d` always uses the locally built
+> image and never pulls the registry one**; `latest` is a rolling tag, so moving to a new build always
+> requires re-pulling and recreating the container.
 
 ### 3. Build from source (manual build)
 
@@ -80,11 +91,16 @@ docker build --build-arg REDLIB_BRANCH=main -t redlib .
 docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t redlib .
 ```
 
-> **Reproducibility note**: The Dockerfile clones the state of upstream `main`
-> **at build time**. Our pushed `latest` is built from a specific version of upstream `main`;
-> building yourself yields "the same build process + that day's redlib version",
-> but is not guaranteed to be bit-for-bit identical to our image. To pin a fixed version,
-> use `--build-arg REDLIB_BRANCH=<commit or tag>`.
+> **Bake note**: the build automatically merges the PRs listed in `redlib-prs.txt` into the cloned
+> source (`.build/apply_redlib_prs.sh`, plain `--no-ff` merges). If upstream or a PR drifts, the log shows
+> `warning: PR #<n> head moved` (informational) or the merge conflicts and the build fails outright —
+> deliberately, so upstream changes are never silently dropped. Procedure: `design/upstream-pr-bake.md` §5.
+>
+> **Reproducibility note**: the Dockerfile clones the state of upstream `main` **at build time**, and PR
+> heads can be force-pushed. Our pushed `latest` is a snapshot of one point in time; building yourself
+> yields "the same build process + that day's redlib version", not a bit-for-bit identical image.
+> To pin a fixed version, pull the registry's **`<git-sha>` tag**, or use
+> `--build-arg REDLIB_BRANCH=<commit or tag>`.
 
 ## Environment Variables
 
@@ -118,21 +134,28 @@ All tags are multi-platform manifest lists (`linux/amd64` + `linux/arm64`):
 
 > **Note**: `amd64` and `arm64` tags also exist in the registry but are used
 > internally for CI manifest merging. Users should pull `latest` or `<git-sha>`.
+>
+> A mirror built by GitHub Actions also exists: `ghcr.io/lawlietr/redlib:latest`
+> (**amd64 only**; the repo is private, so the package is private and pulling needs a `read:packages` token).
 
 ## CI/CD
 
-- Trigger: changes to `Dockerfile` or a manual "Run workflow".
-- Execution environment: a locally self-hosted Forgejo Runner (`redlib` label) with BuildKit + cargo cache mount (incremental builds).
+- Trigger: changes to `Dockerfile`, `Dockerfile.pack`, `redlib-prs.txt`, `.build/**`, `.forgejo/scripts/build_and_push.sh`, or a manual "Run workflow".
+- Execution: a locally self-hosted Forgejo Runner (`redlib` label) cross-compiles musl for amd64/arm64 natively (no QEMU), with BuildKit + cargo cache mount (incremental builds).
 - Push target: `codeberg.org/lawlietr/redlib`. Each build produces two multi-platform
   manifest lists — `latest` (rolling) and `<git-sha>` (reproducible pin) — both containing
   `linux/amd64` and `linux/arm64`.
-- Details and troubleshooting: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`.
+- GitHub Actions (`.github/workflows/build.yml`): builds the **same** `Dockerfile` and the same PR bake on `ubuntu-latest` (amd64) → `ghcr.io/lawlietr/redlib:latest`. Details: `design/github-actions-workflow.md`.
+- Details and troubleshooting: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
 
 ## Troubleshooting
 
 - **Build failure**: Ensure the network connection is healthy (the build clones upstream and fetches Rust crates);
   boring-sys2 (BoringSSL) requires cmake + a C compiler + libclang, all preinstalled in the builder image.
 - **Container fails to start**: Check whether port 8080 is in use; inspect the logs with `docker logs redlib`.
+- **Still the old build after "updating"**: `latest` is a rolling tag, so a host that already pulled it must
+  `docker pull` again and recreate the container; with this repo's compose file remember `--no-build`
+  (mode A above), otherwise `up -d` uses the locally built image.
 
 ## Project Information
 

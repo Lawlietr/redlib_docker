@@ -20,6 +20,13 @@ This repository's own configuration files and scripts are licensed under the MIT
 docker build -t redlib .                          # local build
 # docker build --build-arg REDLIB_BRANCH=dev -t redlib .  # specific branch
 docker run -p 8080:8080 -d --name redlib redlib  # run
+
+# Compose has two image sources (same service, switched by REDLIB_IMAGE):
+docker compose up -d --build                      # B) local build (PR bake included)
+REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest \
+  docker compose up -d --pull always --no-build   # A) run the CI image (no build)
+# NOTE: with a `build:` key present, a plain `up -d` uses the locally built image and
+# never pulls the registry one -> always pass --no-build for mode A.
 ```
 
 Test build: `docker build --target builder -t redlib-test .` then
