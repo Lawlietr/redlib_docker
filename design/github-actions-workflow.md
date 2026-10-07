@@ -40,6 +40,10 @@ permissions:
 
 ## 4. 推送目標 / tag
 - `ghcr.io/${GITHUB_REPOSITORY_OWNER}/redlib:latest`（目前只 `latest`，沒有 `<git-sha>` tag —— 與 codeberg 版不同）。
+  - ⚠ **owner 必須小寫**：`GITHUB_REPOSITORY_OWNER` 是 `Lawlietr`，但 registry repository name 只能小寫，
+    `docker build -t ghcr.io/Lawlietr/redlib:latest` 會直接 `invalid tag … repository name must be lowercase`。
+    腳本內以 `${GITHUB_REPOSITORY_OWNER,,}` 強制小寫 → 實際推送 `ghcr.io/lawlietr/redlib:latest`（與 codeberg 的 namespace 一致）。
+    登入用的 username 則用原樣 account 名（`github.repository_owner`）。
 - codeberg 版推 `codeberg.org/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`。
 
 ## 5. 架構：GitHub 端 amd64-only
@@ -60,6 +64,7 @@ Codeberg/本地 Forgejo 端才是多架構（musl 原生交叉編譯，見 `desi
 - `workflow_dispatch` 手動觸發（Actions → "Build container images" → Run workflow）。
 
 ## 7. 驗證步驟（每次改動後）
+0. 注意：**新 repo 的首次 push 不會觸發 workflow**（GitHub 行為），要手動 `gh workflow run` 跑一次；之後 push 正常觸發。
 1. `gh run list --repo Lawlietr/redlib_docker --limit 3` → 最新 run 是否 success。
 2. `gh run view <id> --log` 裡應出現 5 行 `Merging PR #<n> -> <sha>`、無 `warning: PR ... head moved`。
 3. `docker manifest inspect ghcr.io/lawlietr/redlib` 或 `ghcr.io/<owner>/redlib` → 確認 tag 存在、platform = linux/amd64。
