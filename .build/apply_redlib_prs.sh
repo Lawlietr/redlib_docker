@@ -21,6 +21,17 @@ set -euo pipefail
 repo_dir="${1:?usage: apply_redlib_prs.sh <repo-dir> <prs-file>}"
 prs_file="${2:?usage: apply_redlib_prs.sh <repo-dir> <prs-file>}"
 
+# Resolve both arguments to absolute paths BEFORE the cd below: the PR file is
+# read after we have entered the source dir, so a relative path (as passed by
+# .forgejo/scripts/build_and_push.sh) would no longer resolve.
+repo_dir="$(realpath -- "${repo_dir}")"
+prs_file="$(realpath -- "${prs_file}")"
+
+if [ ! -f "${prs_file}" ]; then
+  echo "error: PR list not found: ${prs_file}" >&2
+  exit 1
+fi
+
 cd "${repo_dir}"
 git config user.email "builder@ci.invalid"
 git config user.name "builder"

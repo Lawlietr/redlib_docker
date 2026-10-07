@@ -117,6 +117,9 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 4. **`--depth 300`**：shallow clone 必須夠深才能找到舊 PR 的 merge base（目前 PR 的 merge base 距 main HEAD 約 8 個 commit，300 很寬）。若 `git merge` 出現「unrelated histories」類錯誤 → 加大 depth。
 5. **兩條 build 路徑要同步**：`Dockerfile`（glibc 靜態，amd64）與 `.forgejo` 腳本（musl 交叉編譯，amd64+arm64）都必須讀同一份 `redlib-prs.txt`，否則 CI 映像與本地映像內容不同。
 6. **clean merge ≠ 語意正確**：五支都不碰 `client.rs`/`Cargo.lock`，風險低，但仍需一次真實編譯（§7）才算數。
+7. **參數路徑**：`apply_redlib_prs.sh` 會先 `cd` 進 source 目錄才讀 PR 檔，所以兩個參數一律先 `realpath` 解析。
+   `.forgejo` 那條路徑傳的是**相對**路徑（`redlib-src` / `redlib-prs.txt`），Dockerfile 傳**絕對**路徑 —— 兩種都要測
+   （2026-10-07 就是相對路徑在 12 runner 上炸 `redlib-prs.txt: No such file or directory`）。
 
 ## 9. 與 fork patch 計畫（P1）的關係
 
