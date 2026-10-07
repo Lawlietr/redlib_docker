@@ -1,0 +1,17 @@
+# Still-OPEN upstream redlib PRs baked into the source tree at build time.
+#
+# These are NOT in upstream main (verified 2026-10-07 against main HEAD
+# a4d36e9: none is an ancestor of main and none is patch-applied).
+# Consumed by: Dockerfile (local/CI amd64 build) and
+# .forgejo/scripts/build_and_push.sh (multi-arch build). Merge order = file
+# order; all five apply cleanly against current main with a plain --no-ff
+# merge (no -X ours needed, so nothing is silently dropped).
+#
+# Format: <PR number> <head SHA at review time — warns if the PR was force-pushed>
+# Rationale, review tiers, re-analysis procedure: design/upstream-pr-bake.md
+
+549 9703ca81e11cc5320107b13da4fa6c8abb717c63   # video: CMAF + rich:video (supersedes #506)
+542 29c9bda4112241746fe50327ca404353a42c1a7b   # post.html: title panic with 0 comments
+521 93c03bb1c3ea7b7ff287227dc0726f5f325d1fb9   # default post sort applied without saving
+560 7a284d301c5fecb657a6330e18bf461d5f679aab   # /u/:name/s/:id share links
+539 514202ad1d1667cb066457bb637535de52eeb2e2   # lazy-load post images (drops svg wrapper)

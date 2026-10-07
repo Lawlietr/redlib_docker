@@ -17,8 +17,10 @@ REGISTRY=codeberg.org
 # Namespace must be lowercase (docker rule); login uses the real account name.
 CODEBERG_USER=lawlietr
 
-# redlib source. Defaults to main, which already contains all formerly-baked
-# PRs (as of 2026-09-18). Override via env to pin a build.
+# redlib source. main is the base; the still-OPEN PRs listed in redlib-prs.txt
+# are merged on top by .build/apply_redlib_prs.sh (same list the Dockerfile
+# uses — the two build paths must stay identical). design/upstream-pr-bake.md.
+# Override via env to pin a build.
 REDLIB_SRC="${REDLIB_SRC:-https://github.com/redlib-org/redlib.git}"
 REDLIB_BRANCH="${REDLIB_BRANCH:-main}"
 
@@ -48,7 +50,13 @@ SRC_DIR="redlib-src"
 
 echo "Cloning ${REDLIB_SRC} (@${REDLIB_BRANCH}) into ${SRC_DIR}"
 rm -rf "${SRC_DIR}"
-git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" "${SRC_DIR}"
+# --depth 300: shallow, but deep enough to reach the merge base of PRs branched
+# from older main (required by the bake step below).
+git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" "${SRC_DIR}"
+
+# Bake still-open upstream PRs (single source of truth: redlib-prs.txt).
+# A merge conflict here means upstream drifted -> re-run design/upstream-pr-bake.md §5.
+bash .build/apply_redlib_prs.sh "${SRC_DIR}" redlib-prs.txt
 
 # Add both musl std targets up front (idempotent).
 rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl

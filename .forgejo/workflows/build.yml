@@ -6,6 +6,8 @@ on:
     paths:
       - "Dockerfile"
       - "Dockerfile.pack"
+      - "redlib-prs.txt"
+      - ".build/**"
       - ".forgejo/scripts/build_and_push.sh"
   workflow_dispatch:
 

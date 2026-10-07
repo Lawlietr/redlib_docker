@@ -13,12 +13,16 @@ on:
     branches: [ main ]
     paths:
       - "Dockerfile"
+      - "redlib-prs.txt"
+      - ".build/**"
       - ".github/**"
   workflow_dispatch:
 
-# Pushing to ghcr.io requires write access to repository contents.
+# Pushing to ghcr.io requires write access to packages (and repository contents
+# for the checkout). GITHUB_TOKEN creates the ghcr package on first push.
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:

@@ -7,8 +7,9 @@
 # .forgejo/scripts/build_and_push.sh and design/multi-arch-build.md). This
 # Dockerfile stays as the single-command local amd64 build.
 # (network access to github.com + crates.io; NO secrets needed — none are
-# used by this file). Image content = upstream `main` as of build time;
-# pin REDLIB_BRANCH to a commit/tag for a bit-for-bit reproducible build.
+# used by this file). Image content = upstream `main` + the still-open PRs
+# listed in redlib-prs.txt, as of build time; pin REDLIB_BRANCH to a
+# commit/tag for a bit-for-bit reproducible build.
 #
 # The lines below are OUR-CI-specific (self-hosted runner pushing to
 # codeberg.org) and are NOT needed for a local build:
@@ -39,12 +40,19 @@ RUN apt-get update \
 
 WORKDIR /redlib
 
-# NOTE: as of 2026-09-18 the formerly-baked PRs (#506, #521, #560, #539,
-# #549) have all been merged into upstream main (up to 8167e00 "Merge
-# PR#549"), so main alone contains everything. The old bake chain is
-# retired; REDLIB_BRANCH=main picks it up automatically.
-# (#509 hyper-tls is superseded by main's wreq migration — do not re-add.)
-RUN git clone --depth 1 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" .
+# Bake still-OPEN upstream PRs (list: redlib-prs.txt, rationale + review tiers:
+# design/upstream-pr-bake.md). They are NOT in upstream main — verified
+# 2026-10-07 against main HEAD a4d36e9, where none of them is an ancestor or
+# patch-applied. (The 2026-09-18 "all merged upstream" note was wrong: the
+# commit it cited, 8167e00 "Merge PR#549", was this build's own local merge
+# tip, not an upstream commit.)
+# --depth 300 keeps the clone shallow while still reaching the merge base of
+# PRs branched from older main. Merges are plain --no-ff (no -X ours): a
+# conflict means upstream drifted and the list must be re-reviewed, so the
+# build fails loudly instead of silently dropping upstream changes.
+COPY redlib-prs.txt .build/apply_redlib_prs.sh /tmp/redlib-build/
+RUN git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
+    && bash /tmp/redlib-build/apply_redlib_prs.sh . /tmp/redlib-build/redlib-prs.txt
 
 # BuildKit cache mounts persist cargo state on the host between builds
 # (incremental rebuilds). Cache content is NOT part of the stage image,
