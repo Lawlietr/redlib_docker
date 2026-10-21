@@ -37,6 +37,14 @@ permissions:
 - 不需要額外 PAT / secret。
 - repo 是 private → ghcr package 繼承 private，**拉映像要登入**（`docker login ghcr.io -u <gh-user> -p <PAT read:packages>`）。
   要公開拉取：`gh repo edit Lawlietr/redlib_docker --visibility public`（或只在 Packages 裡改 visibility）。
+- **2026-10-21 實測（記下三個 probe 結果，避免日後誤判成「映像壞了」）**：
+  - 匿名 `docker manifest inspect ghcr.io/lawlietr/redlib:latest` → `denied`；匿名 token flow → HTTP 403 `invalid token`；
+    package 頁面（`/pkgs/container/redlib`、`/users/Lawlietr/packages/...`） anon 舆 authed 都 404 → **package 是 private**，不是不存在。
+  - 用 git credential 裡那顆 `gho_` OAuth token（push code 用的）可以 `docker login ghcr.io`（Login Succeeded），
+    但拉 manifest/tags 仍是 403 `permission_denied: The token provided does not match expected scopes`，
+    `GET /user/packages` 也是 403 `You need at least read:packages scope` → **能 login 不等於能 pull**，需要 `read:packages` scope。
+  - 正向證據在 Actions log（run `39534174002`，commit `15cc3c1`）：`naming to ghcr.io/lawlietr/redlib:latest done`、
+    `latest: digest: sha256:93606cc4b85ea4c3fe9b6a84401d95a7a8cb2e303cee4e35c5c5f9e6b8886f4e`，`Baked 6 PR(s)` → **ghcr 上確實有含 #592 的映像**，只推 `latest`、只 amd64。
 
 ## 4. 推送目標 / tag
 - `ghcr.io/${GITHUB_REPOSITORY_OWNER}/redlib:latest`（目前只 `latest`，沒有 `<git-sha>` tag —— 與 codeberg 版不同）。
