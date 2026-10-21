@@ -120,7 +120,7 @@ cargo build --release --locked --target aarch64-unknown-linux-musl
 
 ## 6. 打包：Dockerfile.pack（薄打包，不編譯）
 
-每個 arch 的 binary 已預先編好，Dockerfile.pack 只負責包进 `scratch`：
+每個 arch 的 binary 已預先編好，Dockerfile.pack 只負責包進 `scratch`：
 
 ```dockerfile
 FROM scratch

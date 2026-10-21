@@ -15,7 +15,8 @@ this repo only owns the bake chain, CI, Docker config and docs. Say so in user-f
 | Item | Location |
 |------|----------|
 | This repo (Docker config, CI, docs) | https://codeberg.org/Lawlietr/redlib_docker (primary; also mirrored to `github.com/Lawlietr/redlib_docker` as the GitHub Actions build entry point) |
-| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; amd64-only mirror at `ghcr.io/lawlietr/redlib:latest` |
+| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; amd64-only mirror at `ghcr.io/lawlietr/redlib:latest` (`latest` tag only, no `<git-sha>`) |
+| Visibility | both remotes and both registries are **public** since 2026-10-21 (the ghcr package used to inherit the private repo, which made anonymous pulls look like "the image does not exist"). Consequence: **git history is public** — never commit `CODEBERG_PAT`, registration `uuid`/`token`, `ghp_…`/`gho_…` tokens or keys; CI reads them only through `${{ secrets.* }}`. |
 
 This repository's own configuration files and scripts are licensed under the MIT License (see `LICENSE`). The bundled Redlib source (built at Docker build time) retains its own upstream license (AGPL-3.0).
 

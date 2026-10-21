@@ -42,7 +42,7 @@ C 與 D 檔案幾乎不相交，可獨立拆開、獨立驗證。**不可直接�
    刪除所有 `.onion` 字串與 `reddit_urls` 呼叫。
 2. `src/main.rs` 的兩條 route 本身就是 clearnet URL，可原樣採用。
 3. D 的 hunk 自成一塊，基本可直接 `git apply`（style.css 11 個 hunk 全屬 overflow/
-   排版組；若复审发现混入无关的 hover 视觉调整，剔除之）。
+   排版組；若複審發現混入無關的 hover 視覺調整，剔除之）。
 4. C/D 都不新增 Cargo 依賴 → `--locked` build 不受影響（fingerprint 的 hmac/sha2/cookie
    依賴屬於 B，不採用）。
 

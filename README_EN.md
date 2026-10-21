@@ -20,7 +20,7 @@ A lightweight Reddit alternative, deployed via Docker.
 > |------|----------|
 > | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** |
 > | Prebuilt container images | `codeberg.org/lawlietr/redlib` (multi-platform `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`) |
-> | GitHub mirror (only the build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib:latest` (amd64 only) |
+> | GitHub mirror (only the build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib:latest` (**amd64 only**, **`latest` only**; the repo and the package are public, so it pulls anonymously) |
 >
 > The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while the image path is
 > lowercase `lawlietr/redlib` (the Codeberg registry requires lowercase).
@@ -158,7 +158,8 @@ All tags are multi-platform manifest lists (`linux/amd64` + `linux/arm64`):
 > internally for CI manifest merging. Users should pull `latest` or `<git-sha>`.
 >
 > A mirror built by GitHub Actions also exists: `ghcr.io/lawlietr/redlib:latest`
-> (**amd64 only**; the repo is private, so the package is private and pulling needs a `read:packages` token).
+> (**amd64 only**, **`latest` only** — no `<git-sha>` tag; the repo and the ghcr package have been
+> public since 2026-10-21, so it pulls **without any token**).
 
 ## Release notes → `RELEASE_NOTES.md`
 

@@ -70,7 +70,11 @@ actually restore share links.
 
 **How to pull / pin.** Tags carrying this change:
 `codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (both multi-arch,
-amd64 + arm64); the mirror `ghcr.io/lawlietr/redlib:latest` is amd64 only.
+amd64 + arm64). The GitHub-side mirror `ghcr.io/lawlietr/redlib:latest` is amd64
+only and publishes `latest` only (no pinnable `<git-sha>` tag); the repository and
+the package were switched to public on 2026-10-21, so it now pulls anonymously —
+verified against a clean Docker configuration, where the pulled digest matched the
+digest the Actions run pushed. Prefer the Codeberg tags when you need to pin.
 `latest` is a rolling tag, so a re-pull plus container recreation is required;
 a plain `docker compose up -d` with a `build:` key present will *not* pull the
 registry image. To keep a reproducible deployment across future bake changes,

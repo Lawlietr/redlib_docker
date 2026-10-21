@@ -1,6 +1,6 @@
 # GitHub Actions Workflow — ghcr.io 建置流程
 
-> **狀態：已上線（2026-10-07）。** GitHub 遠端 `github.com/Lawlietr/redlib_docker`（**private**）已建立，
+> **狀態：已上線（2026-10-07）；repo 與 ghcr package 自 2026-10-21 起公開。** GitHub 遠端 `github.com/Lawlietr/redlib_docker` 已建立，
 > `git remote add github ...` 已設好，`.github/workflows/build.yml` 由 push 到 `main` 自動觸發，
 > 在 `ubuntu-latest` 原生編 amd64 並推 `ghcr.io/Lawlietr/redlib:latest`。
 > 本地 Forgejo（`.forgejo/`，多架構 musl）仍是主要發佈路徑；兩條路徑的**來源內容必須一致**
@@ -35,16 +35,25 @@ permissions:
   `packages: write` 是**首次推送建立 package** 所需（只有 `contents: write` 時，push 到不存在的
   ghcr package 會 403）。
 - 不需要額外 PAT / secret。
-- repo 是 private → ghcr package 繼承 private，**拉映像要登入**（`docker login ghcr.io -u <gh-user> -p <PAT read:packages>`）。
-  要公開拉取：`gh repo edit Lawlietr/redlib_docker --visibility public`（或只在 Packages 裡改 visibility）。
-- **2026-10-21 實測（記下三個 probe 結果，避免日後誤判成「映像壞了」）**：
-  - 匿名 `docker manifest inspect ghcr.io/lawlietr/redlib:latest` → `denied`；匿名 token flow → HTTP 403 `invalid token`；
-    package 頁面（`/pkgs/container/redlib`、`/users/Lawlietr/packages/...`） anon 舆 authed 都 404 → **package 是 private**，不是不存在。
-  - 用 git credential 裡那顆 `gho_` OAuth token（push code 用的）可以 `docker login ghcr.io`（Login Succeeded），
-    但拉 manifest/tags 仍是 403 `permission_denied: The token provided does not match expected scopes`，
-    `GET /user/packages` 也是 403 `You need at least read:packages scope` → **能 login 不等於能 pull**，需要 `read:packages` scope。
-  - 正向證據在 Actions log（run `39534174002`，commit `15cc3c1`）：`naming to ghcr.io/lawlietr/redlib:latest done`、
-    `latest: digest: sha256:93606cc4b85ea4c3fe9b6a84401d95a7a8cb2e303cee4e35c5c5f9e6b8886f4e`，`Baked 6 PR(s)` → **ghcr 上確實有含 #592 的映像**，只推 `latest`、只 amd64。
+- **2026-10-21：GitHub repo 與 ghcr package 都已轉為 public**（使用者在 UI 手動翻轉；之前 repo private → package 默默繼承 private，容易誤判成「映像不存在」）。
+  查證（全部**完全匿名**，用空的 `DOCKER_CONFIG`、不帶任何憑證）：
+  - `GET /repos/Lawlietr/redlib_docker` → `private: false` / `visibility: public`。
+  - `https://github.com/Lawlietr/redlib_docker/pkgs/container/redlib` → HTTP 200（之前是 404）。
+  - `docker pull ghcr.io/lawlietr/redlib:latest` → 成功，`Digest: sha256:93606cc4b85ea4c3fe9b6a84401d95a7a8cb2e303cee4e35c5c5f9e6b8886f4e`，
+    **與 Actions log（run `39534174002`，commit `15cc3c1`）裡的 digest 完全一致** → 公開的就是含 #592 那輪建置。
+  - `docker manifest inspect -v` → entries=1、platform `linux/amd64`（仍是單架構、仍只有 `latest`）。
+  - 跑起來複驗（同一映像、非 Codeberg 那份）：貼文頁 200、0 則留言 permalink 200、不存在的 sub 404（負 control）、
+    頁面無 parse error 手語、container log 無 panic。
+- 改公開**之前**的 symptom 留檔（日後若又拉不到，這組就是 visibility 被轉回 private 的訊號）：
+  匿名 `docker manifest inspect` → `denied`；匿名 token flow → 403 `invalid token`；package 頁面 → 404。
+  當時踩到的陷阱：用 git credential 裡那顆 `gho_` OAuth token（push code 用的）可以 `docker login ghcr.io`
+  （Login Succeeded），但 manifest/tags 仍是 403 `permission_denied: The token provided does not match expected scopes`、
+  `GET /user/packages` 403 `You need at least read:packages scope` → **能 login 不等於能 pull**；
+  真的需要登入拉取時：`docker login ghcr.io -u <gh-user> -p <PAT read:packages>`。
+- ⚠ **公開的代價：git 歷史全透明**。2026-10-21 已做健檢：全歷史 232 個 blob 掃 `gh[pousr]_…`、`github_pat_…`、
+  `AKIA…`、`-----BEGIN … PRIVATE KEY-----` → **0 命中**；工作區只有 `.env.example`（內容全為註解/空值）；
+  CI 只引用 `${{ secrets.CODEBERG_PAT }}`（Forgejo）與 `secrets.GITHUB_TOKEN`（Actions），PAT 本體在 CI secrets 內、
+  不在 repo 裡。**日後 commit 前留意別把 `CODEBERG_PAT`、註冊 `uuid`/`token` 帶進 commit 或 `design/`**（AGENTS.md 同一要求）。
 
 ## 4. 推送目標 / tag
 - `ghcr.io/${GITHUB_REPOSITORY_OWNER}/redlib:latest`（目前只 `latest`，沒有 `<git-sha>` tag —— 與 codeberg 版不同）。
@@ -85,6 +94,7 @@ Codeberg/本地 Forgejo 端才是多架構（musl 原生交叉編譯，見 `desi
 | 編譯方式 | `docker build -f Dockerfile`（glibc 靜態，host 原生） | `cargo` musl 交叉編譯 + `Dockerfile.pack`（見 multi-arch-build.md） |
 | 架構 | amd64-only | amd64 + arm64（manifest list） |
 | 登錄區 | `ghcr.io/{owner}/redlib:latest` | `codeberg.org/lawlietr/redlib:{latest,<sha>,amd64,arm64}` |
+| 能見度 | **public**（2026-10-21 起：repo 與 package 都公開，匿名可拉） | public（Codeberg registry 公開拉取） |
 | 認證 | `secrets.GITHUB_TOKEN` + `contents/packages: write` | `CODEBERG_PAT`（write:packages）secret |
 | 來源內容 | 同一份 `redlib-prs.txt` bake | 同一份 `redlib-prs.txt` bake |
 | guard | `if: github.server_url == 'https://github.com'` | 無（只在本地 Forgejo 跑） |

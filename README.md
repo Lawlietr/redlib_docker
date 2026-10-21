@@ -18,7 +18,7 @@
 > |------|------|
 > | 本 repo（Docker 設定、CI、文件） | **https://codeberg.org/Lawlietr/redlib_docker** |
 > | 預編譯 container 映像 | `codeberg.org/lawlietr/redlib`（多平台 `linux/amd64` + `linux/arm64`；tag `latest` 與可 pin 的 `<git-sha>`） |
-> | GitHub 鏡像（只是 GitHub Actions 的編譯入口） | https://github.com/Lawlietr/redlib_docker → 映像 `ghcr.io/lawlietr/redlib:latest`（僅 amd64） |
+> | GitHub 鏡像（只是 GitHub Actions 的編譯入口） | https://github.com/Lawlietr/redlib_docker → 映像 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**、**只有 `latest`**；repo 與 package 公開，**匿名可拉**） |
 >
 > 兩者名稱不同：repo 是 `Lawlietr/redlib_docker`，registry 映像路徑是**小寫** `lawlietr/redlib`（Codeberg registry 要求小寫）。
 
@@ -151,8 +151,8 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > **注意**：`amd64` 與 `arm64` 標籤也存在於 registry 中，但僅供 CI 內部
 > manifest merge 使用，不建議使用者直接拉取。
 >
-> 另有 GitHub Actions 產的鏡像備援 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**；
-> repo 為 private → package 也是 private，拉取需 `read:packages` token）。
+> 另有 GitHub Actions 產的鏡像備援 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**、**只有 `latest` 一個 tag**，
+> 沒有 `<git-sha>`；repo 與 ghcr package 自 2026-10-21 起公開，**不需要 token 就能拉**）。
 
 ## 更新說明（Release notes）→ `RELEASE_NOTES.md`
 
