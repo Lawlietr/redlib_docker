@@ -136,8 +136,11 @@ permissions:
 - 腳本：`.github/scripts/mirror_to_codeberg.sh`，job `mirror-codeberg`（`needs: manifest`）。
 - 指令：`docker buildx imagetools create -t codeberg.org/lawlietr/redlib:<tag> ghcr.io/lawlietr/redlib:<tag>`，
   覆蓋 `latest`、`<git-sha>`、`amd64`、`arm64` 四個 tag（含 manifest list 的 child 引用）。
+- 觀察：鏡像後 codeberg 上的 `:amd64`/`:arm64` 會被 BuildKit 重新包成
+  **只含一個 entry 的 index**（ghcr 端是 bare manifest）。`docker buildx imagetools inspect` 看到的形狀不同，
+  但 child digest 相同、pull 行為一致（2026-10-21 兩邊 registry API 實查比對）。
 - 特性：**不跑 cargo、不用 QEMU**，只搬 ~13MB 的 blob；因為全部 content-addressed，
-  **鏡像後的 digest 與 ghcr 一致**（腳本结尾會比對 child digest 並打印）。
+  **鏡像後的 digest 與 ghcr 一致**（腳本結尾會比對兩邊 child digest 並打印，2026-10-21 實測相同）。
 - 認證：需要 GitHub repo secret **`CODEBERG_PAT`**（Codeberg PAT，`write:packages`）。
   username 用帳號原樣 `Lawlietr`，registry 路径是小寫 `lawlietr`（與 `.forgejo/` 那條路同一個不對稱）。
   登入帶 6 次退避重試（Codeberg registry 邊緣偶發會掐 auth 請求）。
@@ -171,7 +174,7 @@ permissions:
 | 狀況 | 結果 | 理由 |
 |---|---|---|
 | `200` 且 body ≥ 20KB | **pass**，並記 `RENDERING_PROVEN` | 整條鏈（listen → DNS → 出網 → 渲染）都通 |
-| `200` 但 body 很小 | **fail**（附 body 前 500 bytes） | 那是錯誤頁，属于真缺陷 |
+| `200` 但 body 很小 | **fail**（附 body 前 500 bytes） | 那是錯誤頁，屬於真缺陷 |
 | `403` / `429` / `503` | `::warning::`，**不 fail** | GitHub runner 的機房 IP 會被 reddit 限流；DNS、TLS、往返已證明，而這些才是本 job 要測的 |
 | 其他狀態或完全無回應 | **fail**（附 40 行 container log） | 映像沒在服務，或 upstream fetch 掛了 |
 | log 出現 `temporary failure in name resolution` / `failed to lookup` / `name or service not known` | **fail** | 直接點名「靜態 binary 在 scratch 無法做 DNS」 |

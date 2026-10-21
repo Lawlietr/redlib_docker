@@ -83,7 +83,9 @@ and the per-feature checks in `design/upstream-pr-bake.md` §7); a local build n
 The pipeline also gained a `smoke` job that runs the **published** image on a clean runner (front page plus
 two subreddit routes, checking status codes, body sizes and resolver errors in the container log) before the
 mirror step is allowed to copy anything to Codeberg — this is the guard for the static-binary-inside-`scratch`
-class of failure, see `design/github-actions-workflow.md` §10.
+class of failure, see `design/github-actions-workflow.md` §10. The gate is live: run `39551016403`
+(`51d0d7e`) finished with all five jobs green, and the mirror step printed identical child digests on both
+registries (`12105bec...` amd64, `d77e9225...` arm64).
 
 **How to pull / pin.** Tags carrying this change:
 `codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (multi-arch, amd64 + arm64).
