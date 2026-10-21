@@ -15,7 +15,7 @@ this repo only owns the bake chain, CI, Docker config and docs. Say so in user-f
 | Item | Location |
 |------|----------|
 | This repo (Docker config, CI, docs) | https://codeberg.org/Lawlietr/redlib_docker (primary; also mirrored to `github.com/Lawlietr/redlib_docker` as the GitHub Actions build entry point) |
-| Container images | **built into `ghcr.io/lawlietr/redlib`** by GitHub Actions on native amd64/arm64 hosted runners (glibc-static), then **mirrored verbatim into `codeberg.org/lawlietr/redlib`** by the same run (`mirror-codeberg` job, registry-side `imagetools` copy) → same tags **and same digests** in both registries. A manual `.forgejo/workflows/build.yml` run would repoint the Codeberg tags at its musl-static builds until the next mirror. Both namespaces are lowercase (registry requirement) |
+| Container images | **built into `ghcr.io/lawlietr/redlib`** by GitHub Actions on native amd64/arm64 hosted runners (glibc-static), then **mirrored verbatim into `codeberg.org/lawlietr/redlib`** by the same run (`mirror-codeberg` job, registry-side `imagetools` copy) → same tags **and same digests** in both registries. A manual `.forgejo/workflows/build.yml` run would repoint the Codeberg tags at its own binaries until the next mirror. Both namespaces are lowercase (registry requirement) |
 | Visibility | both remotes and both registries are **public** since 2026-10-21 (the ghcr package used to inherit the private repo, which made anonymous pulls look like "the image does not exist"). Consequence: **git history is public** — never commit `CODEBERG_PAT`, registration `uuid`/`token`, `ghp_…`/`gho_…` tokens or keys; CI reads them only through `${{ secrets.* }}`. |
 
 **Publishing policy (2026-10-21).** Future images are compiled and published by **GitHub Actions**
@@ -23,7 +23,7 @@ this repo only owns the bake chain, CI, Docker config and docs. Say so in user-f
 `codeberg.org/lawlietr/redlib`** (`mirror-codeberg` job, `docker buildx imagetools create`; needs the
 `CODEBERG_PAT` GitHub secret and fails loudly without it). The Forgejo runner workflow is **kept, not
 deleted** — its `push` trigger was removed so it now runs only via `workflow_dispatch`; use it as the
-fallback when GitHub is unavailable or when you deliberately want musl-static binaries. Local `docker build` + running the container is an explicitly
+emergency fallback when GitHub is unavailable. Local `docker build` + running the container is an explicitly
 supported way to test changes (host architecture only; see the smoke checks under Build Commands). Never
 publish from a local machine — publishing happens in CI only.
 
@@ -72,11 +72,11 @@ Test build: `docker build --target builder -t redlib-test .` then
 
 ### Forgejo Actions (kept as a manual-only fallback)
 
-`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit). **Since 2026-10-21 the `push` trigger is removed: it only runs through `workflow_dispatch`** (optional `reason` input). Keep it: it is the fallback when GitHub Actions is down and the only producer of musl-static binaries; the runner infrastructure and its docs stay current.
+`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit). **Since 2026-10-21 the `push` trigger is removed: it only runs through `workflow_dispatch`** (optional `reason` input). Keep it as the emergency fallback when GitHub Actions is down; the runner infrastructure and its docs stay current. musl here is an implementation detail of cross-compiling arm64 on an x86 host, **not a promised artifact format**: the product is the glibc-static ghcr build, and since arm64 hosted runners exist musl has no product-level role (verified 2026-10-21: both variants are fully static, ~13MB, and behave identically including DNS inside `scratch`).
 
 **Workflow principle: compile on the 12 runner, then push.** Multi-arch binaries are cross-compiled natively on the runner (no QEMU), each packed into `scratch` via `Dockerfile.pack`, pushed per-platform, then merged into a multi-platform manifest list and pushed to the registry.
 
-- **Trigger**: `workflow_dispatch` only (manual, from the local Forgejo UI). Normal publishing of the Codeberg tags now happens through the GitHub `mirror-codeberg` job; this path is for fallback builds and deliberate musl builds (it repoints the Codeberg tags at musl binaries until the next mirror).
+- **Trigger**: `workflow_dispatch` only (manual, from the local Forgejo UI). Normal publishing of the Codeberg tags now happens through the GitHub `mirror-codeberg` job; this path is only for emergency fallback rebuilds (it repoints the Codeberg tags at its own binaries until the next mirror).
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
 - **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Based on `rust:1.98-slim-trixie` (Debian 13) with musl-cross-make aarch64-musl toolchain, clang, cmake, docker CLI, buildx, and compose plugins; see `design/multi-arch-build.md` §5.
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
@@ -91,8 +91,9 @@ Test build: `docker build --target builder -t redlib-test .` then
 - **Trigger**: push to `main` touching `Dockerfile`, `redlib-prs.txt`, `.build/**`, `.github/**`; or `workflow_dispatch`. Runs are serialized by `concurrency: ghcr-publish` so the manifest merge can never pair an old `:amd64` with a new `:arm64`.
 - **Compile**: a 2-entry matrix — amd64 on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm` (standard GitHub-hosted arm64 runner, free for public repositories since 2025-08-07). Each job runs `docker build -f Dockerfile` natively on its own architecture (no QEMU, no cross toolchain) → same source tree as the local build (main + `redlib-prs.txt`)
 - **Registry**: `.github/scripts/build_and_push.sh` pushes `ghcr.io/{owner}/redlib:amd64` and `:arm64`; then `.github/scripts/merge_manifest.sh` merges them into `:latest` and `:<git-sha>` manifest lists with `docker buildx imagetools create` (login uses `GITHUB_TOKEN`; the short sha is derived exactly like the `.forgejo/` script so both registries carry the same tag strings)
-- **Binaries differ from the `.forgejo/` path on purpose**: ghcr publishes glibc + `+crt-static` binaries, Codeberg publishes musl-static ones. Same `scratch` runtime, different files — never compare digests across registries.
+- **Product binaries**: ghcr publishes glibc + `+crt-static` binaries and Codeberg receives them verbatim by mirroring (identical digests). The `.forgejo/` fallback path compiles against musl instead; running it repoints the Codeberg tags at different digests until the next mirror. Do not present musl as an artifact line in docs.
 - **Mirror step**: `mirror-codeberg` (needs: manifest) copies `:latest`, `:<git-sha>`, `:amd64`, `:arm64` from ghcr to `codeberg.org/lawlietr/redlib` with `.github/scripts/mirror_to_codeberg.sh` — registry-side, no rebuild, digests preserved. Requires the repo secret `CODEBERG_PAT` (Codeberg PAT, write:packages); the script exits 1 with an actionable message when it is missing. Login retries 6x with backoff (Codeberg registry edge flakiness).
+- **Smoke step**: `smoke` (needs: manifest) runs `.github/scripts/smoke_test.sh` — asserts the shipped binaries are fully static (no `NEEDED`) and the `:arm64` one is really aarch64, then serves the published `:amd64` and asserts `/` plus two subreddit routes return 200 with real body sizes, and greps the container log for resolver failures (the static-glibc-in-scratch trap). 403/429 from reddit is a warning, not a failure (datacenter IP rate limiting). `mirror-codeberg` depends on it, so a broken image never reaches Codeberg. Never probe redlib with `--help`: it takes no CLI arguments (config comes from env vars only).
 - Fork note: the namespace comes from `GITHUB_REPOSITORY_OWNER` (lowercased), so a fork pushes to its own ghcr namespace with zero edits and no secrets, and it simply has no mirror step configured (the Codeberg path is ours). Package visibility inherits the repo's. Details: `design/github-actions-workflow.md` §3-§5, §9, and the fork section in `README.md`/`README_EN.md`.
 
 Manual trigger: GitHub Actions → "Build container images" → "Run workflow"

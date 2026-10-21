@@ -95,6 +95,28 @@ jobs:
       - name: Merge and Push Manifest List
         run: bash .github/scripts/merge_manifest.sh
 
+  # Smoke-test the published images from a clean runner before anything mirrors them.
+  # Catches the two failure classes that are otherwise only visible on a live instance:
+  # a static binary that cannot resolve DNS inside `scratch`, and a baked upstream PR that
+  # breaks rendering at runtime. Details: design/github-actions-workflow.md §10.
+  smoke:
+    if: ${{ github.server_url == 'https://github.com' }}
+    needs: manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up qemu binfmt (for the arm64 exec check)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run the published image and check upstream-backed routes
+        run: bash .github/scripts/smoke_test.sh
+
   # Copy the freshly published ghcr images into the Codeberg registry, registry-side
   # (no rebuild). The compile work lives here now, but codeberg.org/lawlietr/redlib
   # must still carry the new build, so it is mirrored rather than rebuilt by the
@@ -103,7 +125,7 @@ jobs:
   # Details: design/github-actions-workflow.md §9.
   mirror-codeberg:
     if: ${{ github.server_url == 'https://github.com' }}
-    needs: manifest
+    needs: smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

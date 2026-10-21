@@ -6,7 +6,7 @@
 > 走兩個 build job（amd64 跑 `ubuntu-latest`、arm64 跑 `ubuntu-24.04-arm`）+ 一個 manifest job，
 > 推 `ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`（四個 tag、兩架構）。
 > 本地 Forgejo（`.forgejo/`，多架構 musl）**保留但只手動觸發**（2026-10-21 移除 `push` trigger），
-> 作為 GitHub Actions 不可用時的 fallback 與 musl 產物來源；`codeberg.org/lawlietr/redlib` 的 tag
+> 作為 GitHub Actions 不可用時的緊急備援；`codeberg.org/lawlietr/redlib` 的 tag
 > **由同一條 GitHub CI 的 `mirror-codeberg` job 鏡像維護**（見 §9），不再靠 12 機重新建置。兩條路徑的**來源內容必須一致**（都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
 > 本地 `docker build` + 起容器也是支援的測試途徑（只產本機架構；命令與 smoke 清單見 README 的「本地編譯與測試」節）。
 > 作業層級以 `concurrency: ghcr-publish` 串行，避免 manifest merge 混到不同 commit 的兩個架構。
@@ -81,9 +81,10 @@ permissions:
   （amd64 → `ubuntu-latest`；arm64 → `ubuntu-24.04-arm`），產出 **x86_64 / aarch64 全靜態 glibc binary**
   （`+crt-static`）。不用 QEMU、不用交叉工具鏈。
 - **Codeberg / 本地 Forgejo 端**：musl 原生交叉編譯 + `Dockerfile.pack`（見 `design/multi-arch-build.md`）。
-- ⚠ 兩條路的 **binary 是不同產物**（musl 靜態 vs glibc 靜態），同一 commit 的 **digest 不會相同**；
+  此處的 musl 是「x86 主機要交叉出 arm64」的實作手段，**不是產品承諾**；只有那條備援路被手動跑時才會碰到發佈物。
+- ⚠ 兩條路的 **binary 編譯來源不同**（musl 交叉 vs glibc 原生靜態）；
   跨 registry 比對時比 tag 與行為。**例外（2026-10-21 起）**：codeberg 的 tag 若是被 §9 的鏡像复制過去的，
-  內容與 digest **完全相同**；只有手動 musl 建置會讓 digest 分岔。
+  內容與 digest **完全相同**；只有手動跑 `.forgejo/` 那條備援路會讓 digest 分岔。
 
 ### arm64 的三條路（2026-10-21 選第 3 條，已上線）
 1. **交叉編譯**（ubuntu-latest 上装 aarch64 musl 交叉工具鏈，沿用 `.forgejo/` 的 musl 邏輯）——
@@ -141,7 +142,61 @@ permissions:
   username 用帳號原樣 `Lawlietr`，registry 路径是小寫 `lawlietr`（與 `.forgejo/` 那條路同一個不對稱）。
   登入帶 6 次退避重試（Codeberg registry 邊緣偶發會掐 auth 請求）。
 - **缺 secret 就 exit 1**，不會靜默略過 —— 這是刻意設計，避免「鏡像悄悄不更新」。
-- ⚠ 若有人**手動**跑 `.forgejo/workflows/build.yml`（musl 產物），它會把這四個 tag 指向不同的 digest；
-  下一次 GitHub 建置會再把鏡像蓋回來。要長期保留 musl 版請另用 tag 前綴，不要共用 `latest`。
+- ⚠ 若有人**手動**跑 `.forgejo/workflows/build.yml`（它自己的 musl 交叉產物），它會把這四個 tag 指向不同的 digest；
+  下一次 GitHub 建置會再把鏡像蓋回來。musl 已不是產品線（§11），不該為它保留專用 tag。
 - 對 fork 的影響：鏡像目標是寫死的 `codeberg.org/lawlietr/redlib`（我們的 namespace），
   fork 若沒有對應 secret 就會在該 job 失敗；fork 要嘛加自己的 secret、要嘛把該 job 註解掉。
+
+## 10. 發佈前的 `smoke` job（2026-10-21 新增）
+
+順序：`build` → `manifest` → `smoke`（`needs: manifest`）→ `mirror-codeberg`（`needs: smoke`）。
+鏡像以煙測為前提，**壞映像不會流到 Codeberg**。
+
+腳本：`.github/scripts/smoke_test.sh`，四步
+
+1. `docker cp` 把 `:amd64` 裡的 `/redlib` 抓出來 `file` + `readelf -d`：**必須是全靜態**（有 `NEEDED` 就直接 fail，
+   因為 `scratch` 上沒有 loader）。⚠ 不要想用 `--help` 探測 —— **redlib 不收任何 CLI 參數**，餵它 `--help` 只會得到
+   `error: unexpected argument found`（2026-10-21 實測），設定一律來自環境變數。
+2. 起容器打 `/`（最多輪詢 8 次）：必須 200，且 body ≥ 20KB（錯誤頁通常遠小於此）。
+3. 打 `/r/gaming`、`/r/AskReddit/top`：強迫容器內做 **DNS 解析 + 出網 HTTPS**。這是重點 —— 靜態 glibc 在
+   `scratch` 裡沒有 `libnss_*`，理論上 `getaddrinfo` 會失敗；2026-10-21 實測（amd64）沒發生，但要由 CI 持續
+   守著，而不是靠線上發現。
+4. arm64 側的**確定性**閘門：`docker create --platform linux/arm64` + `docker cp` 取出的 binary 必須是
+   `ARM aarch64` 且全靜態（不需 qemu、不需模擬）。若 runner 上**恰好**有 `qemu-aarch64` binfmt，會额外試著真的
+   起 arm64 容器打 `/`，失敗只 `::warning::`。**功能級 arm64 驗證仍需真硬體**（qemu 使用者模式不等於樹莓派），
+   見 TODO 的 P2。
+
+判定尺度：
+- `>=500` 或完全無回應 → **fail**，並附 40 行 container log。
+- reddit 回 **403/429** → `::warning::`，**不 fail**：GitHub runner 的機房 IP 會被 reddit 限流，但 DNS 與往返
+  已證明成功，而這兩項才是本 job 的目的。
+- log 出現 `temporary failure in name resolution` / `failed to lookup` / `resolve` → **fail**，訊息直接點名
+  「靜態 binary 在 scratch 無法做 DNS」。
+
+基線（2026-10-21 本機 x86_64 完整跑過一次 `smoke_test.sh`，exit 0）：amd64 binary `statically linked`、arm64 binary
+`ARM aarch64 ... statically linked`、`/` 200（54~61KB，首次輪詢常因容器還沒 listen 而 000）、`/r/gaming` 200 79,425B、
+`/r/AskReddit/top` 200 38,009B、log 無解析器錯誤。
+
+## 11. musl 退場為產品線，只留作備援路的實作細節（2026-10-21 決策）
+
+**決策**：`.forgejo/` 的 musl 交叉建置**保留 workflow 與 runner**，但 musl **不再作為對外承諾的產物格式**；
+不新增 `-musl` 之類的專用 tag，文件也不再宣稱「Codeberg 是 musl 版」。
+
+**依據（同日實測，x86_64 同一台機器）**
+
+| 項目 | ghcr glibc `+crt-static` | Codeberg 舊 musl 版（tag `15cc3c1`） |
+|---|---|---|
+| `readelf -d` NEEDED | 0（全靜態） | 0（全靜態） |
+| 映像大小 | 13.5MB | 13.2MB |
+| `/` | 200 61,422B | 200 61,422B |
+| `/r/AskReddit/top` | 200 38,009B | 200 38,009B |
+| `/r/gaming`（DNS + 出網） | 200 79,424B，無解析器錯誤 | 200 79,424B，無解析器錯誤 |
+
+- 靜態 glibc 在 `scratch` 的 NSS/DNS 疑慮**沒有發生**，所以 musl 最後的技術理由消失；大小也沒有差異可言。
+- musl 當初存在的理由是「在 x86_64 的 12 機上交叉出 arm64」；GitHub 提供**免費原生 arm64 hosted runner** 之後，
+  這個需求本身消失。留著 musl 產品線只剩維護成本：musl-cross-make 工具鏈、`CC_/CXX_/AR_/BINDGEN_EXTRA_CLANG_ARGS`
+  那組 env（見 `design/multi-arch-build.md`），以及與鏡像搶 tag 造成的 digest 分岔。
+- **不做**的事：不把 `Dockerfile` 改成 musl（`design/forgejo-runner-workflow.md` §7 已記錄 alpine/musl 路線在
+  bindgen/libclang 上無解）、不為 musl 保留平行 tag、不在 README 的 Tags 表宣稱 musl。
+- 舊的 musl tag 在 Codeberg 仍拉得到（`15cc3c1`、`48bdbed`、`7489ef4`、`74cc5f8`），pin 過的人不會壞；
+  但 `latest`/`<git-sha>`/`amd64`/`arm64` 現在由鏡像持有，內容等於 ghcr。

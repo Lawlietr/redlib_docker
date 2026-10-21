@@ -20,7 +20,7 @@ A lightweight Reddit alternative, deployed via Docker.
 > |------|----------|
 > | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** (mirrored at https://github.com/Lawlietr/redlib_docker) |
 > | **Prebuilt container images (primary, since 2026-10-21)** | **`ghcr.io/lawlietr/redlib`** — built automatically by **GitHub Actions**, dual-arch `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`; public, **pulls anonymously** |
-> | Mirrored images | `codeberg.org/lawlietr/redlib` — **mirrored by GitHub Actions with a registry-side copy** (no rebuild), so tags **and digests match ghcr**; musl-static builds only appear when you run `.forgejo/workflows/build.yml` by hand (which temporarily overwrites those tags until the next mirror) |
+> | Mirrored images | `codeberg.org/lawlietr/redlib` — **mirrored by GitHub Actions with a registry-side copy** (no rebuild), so tags **and digests match ghcr**; the manual fallback path (`.forgejo/workflows/build.yml`) temporarily repoints those tags at its own binaries until the next CI run re-mirrors them |
 >
 > The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while image paths are
 > lowercase (`lawlietr/redlib`) — required by the ghcr registry, and the Codeberg namespace is lowercase too.
@@ -35,7 +35,7 @@ A lightweight Reddit alternative, deployed via Docker.
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
 - **From 2026-10-21 all images are compiled by GitHub Actions and pushed to the primary registry
   `ghcr.io/lawlietr/redlib`** (dual-platform `linux/amd64` + `linux/arm64`). The local Forgejo runner
-  pipeline is **kept but no longer triggers on push** (manual-only fallback and the musl-static producer), while the
+  pipeline is **kept but no longer triggers on push** (manual-only emergency fallback), while the
   **Codeberg registry is kept current by a mirror job in the same CI run** (registry-side copy; tags and digests match);
   local `docker build` is supported as well, for testing changes and offline debugging.
 
@@ -173,7 +173,7 @@ Full list: https://github.com/redlib-org/redlib/blob/main/.env.example
 
 > ⚠ The Codeberg tags are now a **mirror** of the GitHub build, so **the same tag has the same digest in both
 > registries** and a digest pin works across them. **Exception**: a manual `.forgejo/workflows/build.yml` run
-> repoints those tags at musl-static builds (different digests) until the next CI build re-mirrors them.
+> repoints those tags at its own binaries (different digests) until the next CI build re-mirrors them.
 > Both registries are public, so **no token is needed to pull**.
 
 ## Can a fork build its own images easily?
@@ -227,8 +227,10 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
 - **Kept, but no longer automatic: the local Forgejo runner** (`.forgejo/workflows/build.yml`, the
   `redlib` label on the 12 host). Since 2026-10-21 its `push` trigger is removed and only
   `workflow_dispatch` remains (with an optional reason input). Use it as a fallback when GitHub Actions
-  is unavailable, as the only producer of musl-static binaries, or to resync the
-  `codeberg.org/lawlietr/redlib` tags. The runner infrastructure and disk discipline (30GB host,
+  is unavailable (or when you deliberately want to rebuild inside your own network). It produces
+  musl-cross-compiled binaries, which is only an **implementation detail of that path** (musl is the
+  cheapest way to cross-compile arm64 on an x86 box), **not a promised binary format**: the product is
+  the glibc-static build on ghcr, which Codeberg receives by mirroring. The runner infrastructure and disk discipline (30GB host,
   `disk_guard.sh` + prune) are fully preserved: `design/forgejo-runner-workflow.md`,
   `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
 - **`codeberg.org/lawlietr/redlib` is maintained by the same CI run**: after the manifest merge, the
@@ -236,7 +238,12 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
   `docker buildx imagetools create` (verbatim, no rebuild, ~13MB), so tags and digests match.
   That job needs the `CODEBERG_PAT` GitHub secret (`write:packages`) and **fails loudly when it is missing**
   rather than skipping. Details: `design/github-actions-workflow.md` §9.
-- ⚠ A **manual** Forgejo (musl) build repoints the Codeberg tags at its own binaries until the next GitHub
+- **A `smoke` job gates the publish** (`needs: manifest`): it starts the freshly pushed `:amd64` image on a clean
+  runner and hits `/`, `/r/gaming` and `/r/AskReddit/top`, checking status codes and body sizes and grepping the log
+  for resolver errors. It targets the two failure classes that used to surface only on a live instance: a static binary
+  that cannot resolve DNS inside `scratch`, and a baked upstream PR that breaks at runtime. `mirror-codeberg` has
+  `needs: smoke`, so a failing image is never mirrored. Details: `design/github-actions-workflow.md` §10.
+- ⚠ A **manual** Forgejo fallback build repoints the Codeberg tags at its own binaries until the next GitHub
   build re-mirrors them.
 - How to verify each step: `design/error-triage-playbook.md`; per-feature regression list:
   `design/upstream-pr-bake.md` §7.
@@ -244,7 +251,8 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
 ## Local build and testing (recommended around any change)
 
 CI is not the only entry point: building locally and running the container is an **explicitly
-supported** workflow (and the only way to test a change before it reaches either registry):
+supported** workflow (run it around any change; the CI `smoke` job applies the same class of checks to
+the published image):
 
 ```bash
 # 1) build (produces the host architecture only; includes the redlib-prs.txt PR bake)

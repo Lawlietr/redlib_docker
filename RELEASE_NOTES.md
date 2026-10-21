@@ -73,12 +73,17 @@ Actions** into `ghcr.io/lawlietr/redlib` (dual-arch, `latest` + `<git-sha>`, pub
 `codeberg.org/lawlietr/redlib` **keeps publishing**: the same CI run mirrors the finished images into it
 with a registry-side copy (`docker buildx imagetools create`, no rebuild), so **tags and digests are
 identical in both registries** and a digest pin is valid either way. The self-hosted Forgejo pipeline is
-kept but no longer triggers on push — it is a manual fallback and the only way to get musl-static
-binaries; running it by hand repoints the Codeberg tags at those builds until the next CI mirror.
+kept but no longer triggers on push — it is an emergency fallback (its musl cross-compiled binaries are an
+implementation detail of that path, no longer a separate artifact line: `design/github-actions-workflow.md` §11);
+running it by hand repoints the Codeberg tags at those builds until the next CI mirror.
 If you currently pull from `codeberg.org/lawlietr/redlib`, nothing changes for you.
 
 Local builds are explicitly supported for testing (`docker build -t redlib .`, then run the container
-and the smoke checks in `design/upstream-pr-bake.md` §7); a local build never publishes anything.
+and the per-feature checks in `design/upstream-pr-bake.md` §7); a local build never publishes anything.
+The pipeline also gained a `smoke` job that runs the **published** image on a clean runner (front page plus
+two subreddit routes, checking status codes, body sizes and resolver errors in the container log) before the
+mirror step is allowed to copy anything to Codeberg — this is the guard for the static-binary-inside-`scratch`
+class of failure, see `design/github-actions-workflow.md` §10.
 
 **How to pull / pin.** Tags carrying this change:
 `codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (multi-arch, amd64 + arm64).
@@ -86,9 +91,10 @@ The GitHub-side mirror **is now multi-arch too and is also pinnable**: as of 202
 `ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`, built natively on amd64 and arm64
 GitHub-hosted runners, and the repository/package are public so it pulls anonymously (verified from a
 clean Docker configuration; the pulled digest matched the digest the Actions run pushed).
-One caveat when switching registries: the GitHub pipeline publishes **glibc-static** binaries while
-the Codeberg pipeline publishes **musl-static** ones — same `scratch` runtime, different files, so
-compare tags and behaviour, never digests. The earliest `<git-sha>` tag on ghcr is `d572b2e`; earlier
+The two registries now carry the **same bytes**: the Codeberg tags are a registry-side copy of the GitHub
+build, so a tag or a digest is interchangeable between them (verified 2026-10-21: identical child manifest
+digests for `latest` and `<git-sha>`). Only a manual fallback (Forgejo) build makes them diverge, and only
+until the next CI run re-mirrors. The earliest `<git-sha>` tag on ghcr is `d572b2e`; earlier
 ghcr builds only ever had `latest`. `ghcr.io/lawlietr/redlib:d572b2e` and
 `codeberg.org/lawlietr/redlib:15cc3c1` contain the same baked redlib source (the commits differ only
 in CI files), so either one carries this change.

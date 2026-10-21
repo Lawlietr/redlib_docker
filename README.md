@@ -18,7 +18,7 @@
 > |------|------|
 > | 本 repo（Docker 設定、CI、文件） | **https://codeberg.org/Lawlietr/redlib_docker**（另有 GitHub 鏡像 https://github.com/Lawlietr/redlib_docker） |
 > | **預編譯 container 映像（主，2026-10-21 起）** | **`ghcr.io/lawlietr/redlib`** — 由 **GitHub Actions** 自動建置，雙架構 `linux/amd64` + `linux/arm64`；tag `latest` 與可 pin 的 `<git-sha>`；公開，**匿名可拉** |
-> | 同一批映像的鏡像 | `codeberg.org/lawlietr/redlib` — **由 GitHub Actions 以 registry 側 copy 鏡像過去**（不重新編譯），tag 與 **digest 兩邊相同**；musl 靜態產物只在你手動跑 `.forgejo/workflows/build.yml` 時出現（會暫時覆蓋這些 tag，直到下一次 CI 把鏡像蓋回來） |
+> | 同一批映像的鏡像 | `codeberg.org/lawlietr/redlib` — **由 GitHub Actions 以 registry 側 copy 鏡像過去**（不重新編譯），tag 與 **digest 兩邊相同**；那條手動備援路（`.forgejo/workflows/build.yml`）會把這些 tag 暫時換成它自己的產物，直到下一次 CI 把鏡像蓋回來 |
 >
 > 名稱差異要注意：repo 是 `Lawlietr/redlib_docker`（Codeberg 上大小寫自如顯示），registry 映像路徑是**小寫** `lawlietr/redlib`（registry 要求小寫，兩個登錄區都如此）。
 
@@ -31,8 +31,8 @@
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
 - **未來鏡像一律由 GitHub Actions 編譯並推送**到主登錄區 **`ghcr.io/lawlietr/redlib`**（雙平台
   `linux/amd64` + `linux/arm64`），**隨後自動鏡像到 `codeberg.org/lawlietr/redlib`**（registry 側 copy、不重新編譯，
-  tag 與 digest 兩邊相同）。本地 Forgejo runner 那條路**保留**但改為**只手動觸發**（GitHub 不可用時的 fallback，
-  也是 musl 靜態產物的來源）；本機 `docker build` 也支援，適合改動測試與離線除錯。
+  tag 與 digest 兩邊相同）。本地 Forgejo runner 那條路**保留**但改為**只手動觸發**（GitHub 整天不可用時的緊急備援，不是一個產品線）；
+  本機 `docker build` 也支援，適合改動測試與離線除錯。
 
 ## 部署方式
 
@@ -145,7 +145,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 > ⚠ 現在 `codeberg.org/lawlietr/redlib` 的 tag 是 GitHub Actions **鏡像**過去的，所以**同一 tag 的 digest 兩邊相同**，
 > 用 digest pin 可以在兩個登錄區間通用。**例外**：手動跑 `.forgejo/workflows/build.yml` 會把這些 tag 指向
-> musl 靜態產物（digest 就會不同），直到下一次 CI 建置把鏡像蓋回來。兩個登錄區都公開，**匿名可拉**。
+> 它自己的產物（digest 就會不同），直到下一次 CI 建置把鏡像蓋回來。兩個登錄區都公開，**匿名可拉**。
 
 ## Fork 之後能輕易產自己的鏡像嗎？
 
@@ -213,21 +213,27 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
   避免 manifest merge 混到不同 commit 的兩個架構。細節：`design/github-actions-workflow.md`。
 - **保留但不自動跑：本地 Forgejo runner**（`.forgejo/workflows/build.yml`，12 機 `redlib` label）。
   2026-10-21 起 `push` 觸發已移除，**只剩 `workflow_dispatch`**（可選填 reason）。用途：
-  GitHub Actions 不時的 fallback、唯一產 musl 靜態 binary 的路、以及把 `codeberg.org/lawlietr/redlib` 的 tag 追平。
+  只作為 GitHub Actions 不可用時的緊急備援（或你刻意要在自己網路內重產一份時）。它產的是 musl 交叉編譯的
+  成品 —— 這只是**那條路的實作細節**（x86 機器上要交叉編 arm64，musl 最省事），**不是對外承諾的二進位格式**；
+  主產物一律是 ghcr 的 glibc 靜態版，Codeberg 由鏡像取得。
   runner 基礎設施與磁碟紀律（30GB、`disk_guard.sh` + prune）完整保留，見 `design/forgejo-runner-workflow.md`、
   `design/forgejo-runner-deployment.md`、`design/multi-arch-build.md`。
 - **`codeberg.org/lawlietr/redlib` 由同一條 CI 鏡像維護**：manifest 合併完之後，`mirror-codeberg` job 用
   `docker buildx imagetools create` 把 `:latest`/`:<git-sha>`/`:amd64`/`:arm64` **原樣複製**過去（不重新編譯，
   約 13MB），因此 tag 與 digest 兩邊一致。該 job 需要 GitHub 端的 `CODEBERG_PAT` secret（`write:packages`），
   **沒設就會明確失敗**（不會靜默略過）。細節：`design/github-actions-workflow.md` §9。
-- ⚠ 如果你**手動**跑 Forgejo 那條 musl 建置，它會把 codeberg 的 tag 換成 musl 產物（digest 與 ghcr 不同），
+- **發佈前有 `smoke` job**（`needs: manifest`）：把剛推出的 `:amd64` 鏡像在乾淨 runner 上跑起來，打 `/`、
+  `/r/gaming`、`/r/AskReddit/top`，檢查狀態碼與 body 大小並掃 log 找解析器錯誤 —— 專抓「靜態 binary 在
+  `scratch` 內無法做 DNS」與「bake 的 PR 在執行期壞掉」這兩類只有上線才會發現的問題；`mirror-codeberg`
+  `needs: smoke`，沒通過就不會鏡像。細節：`design/github-actions-workflow.md` §10。
+- ⚠ 如果你**手動**跑 Forgejo 那條備援建置，它會把 codeberg 的 tag 換成它自己的產物（digest 與 ghcr 不同），
   直到下一次 GitHub 建置把鏡像蓋回來。
 - 驗證每一步的做法：`design/error-triage-playbook.md`；逐功能回歸清單：`design/upstream-pr-bake.md` §7。
 
 ## 本地編譯與測試（改動前後都建議跑）
 
-CI 不是唯一入口，本地 build + 起容器驗證是**明確支援**的做法（也是 `.forgejo/` 那條路以外
-仍能拿到 musl 以外產物的方式）：
+CI 不是唯一入口，本地 build + 起容器驗證是**明確支援**的做法（改動前後都建議跑；CI 的 `smoke` job 做的是
+同一類檢查，只是對象是已發佈的鏡像）：
 
 ```bash
 # 1) build（只產本機架構；含 redlib-prs.txt 的 PR bake）

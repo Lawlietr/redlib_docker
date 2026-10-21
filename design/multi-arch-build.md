@@ -48,8 +48,10 @@ build script（host，redlib:host label）
 
 ## 4. target / libc 子決策
 
-- **B1（已定案）：兩檔統一 musl 靜態。** musl target 的 `+crt-static` 是 Rust 預設，
+- **B1（已定案，但 2026-10-21 已退場為產品定位）：兩檔統一 musl 靜態。** musl target 的 `+crt-static` 是 Rust 預設，
   不用手搓靜態 flag。match upstream、一套 flag、最乾淨。**amd64 從 glibc 改為 musl**，
+  ⚠ 這個子決策只適用於**本檔描述的 12 機交叉路線**；主產物現在是 GitHub 端原生的 glibc 靜態版，
+  musl 作為產品線已退場（決策與實測依據：`design/github-actions-workflow.md` §11）。
   但 redlib 無 glibc 專屬需求，風險低，改完重測即可。
 
 ## 5. 工具鏈（12 機 runner）
@@ -171,7 +173,8 @@ docker buildx imagetools create \
 - **2026-10-21：本檔描述的 `.forgejo/` 路徑改為「只手動觸發」**（保留 runner 與腳本，不刪）。
   編譯改由 GitHub Actions 承擔（原生 arm64 hosted runner），`codeberg.org/lawlietr/redlib` 的 tag 則由同一條
   CI 的 **`mirror-codeberg` job 鏡像**（registry 側 copy，digest 相同）；見 `design/github-actions-workflow.md` §9。
-  本檔的 musl 交叉編譯設定仍是**手動 fallback / 刻意要 musl 產物時的操作依據**，未失效。
+  本檔的 musl 交叉編譯設定仍是**手動備援路的操作依據**（x86 主機要交叉出 arm64 時 musl 最省事），未失效；
+  但它已**不是對外承諾的產物格式**，也不該為它建立平行 tag —— 見 `design/github-actions-workflow.md` §11。
 
 - [x] **runner 工具鏈（script 層）**：`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
 - [ ] **擴建 runner Dockerfile 安裝工具鏈**（`apk add` cross-compiler + rustup + clang）

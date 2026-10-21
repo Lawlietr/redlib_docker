@@ -7,7 +7,7 @@
 #
 #   A2) the Codeberg registry, mirrored by the same CI run with a registry-side copy
 #       (identical tags and digests). Only a MANUAL Forgejo workflow run would put
-#       musl-static binaries on those tags instead:
+#       its own (musl-cross-compiled) binaries on those tags instead:
 #        REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest \
 #          docker compose up -d --pull always --no-build
 #
