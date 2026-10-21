@@ -15,7 +15,7 @@ this repo only owns the bake chain, CI, Docker config and docs. Say so in user-f
 | Item | Location |
 |------|----------|
 | This repo (Docker config, CI, docs) | https://codeberg.org/Lawlietr/redlib_docker (primary; also mirrored to `github.com/Lawlietr/redlib_docker` as the GitHub Actions build entry point) |
-| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; amd64-only mirror at `ghcr.io/lawlietr/redlib:latest` (`latest` tag only, no `<git-sha>`) |
+| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; mirror `ghcr.io/lawlietr/redlib` — also multi-arch + `<git-sha>` since 2026-10-21 (built on native amd64/arm64 hosted runners), glibc-static instead of musl |
 | Visibility | both remotes and both registries are **public** since 2026-10-21 (the ghcr package used to inherit the private repo, which made anonymous pulls look like "the image does not exist"). Consequence: **git history is public** — never commit `CODEBERG_PAT`, registration `uuid`/`token`, `ghp_…`/`gho_…` tokens or keys; CI reads them only through `${{ secrets.* }}`. |
 
 This repository's own configuration files and scripts are licensed under the MIT License (see `LICENSE`). The bundled Redlib source (built at Docker build time) retains its own upstream license (AGPL-3.0).
@@ -64,13 +64,14 @@ Test build: `docker build --target builder -t redlib-test .` then
 - Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*`/`CC_*`/`BINDGEN_EXTRA_CLANG_ARGS` for the arm target — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)"; bindgen needs glibc multiarch headers on Debian trixie. Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 
-### GitHub Actions Workflow (amd64 compile + ghcr mirror)
+### GitHub Actions Workflow (amd64 + arm64 compile + ghcr mirror)
 
 `.github/workflows/build.yml` is guarded with `if: ${{ github.server_url == 'https://github.com' }}` so it only runs when the repo is hosted on GitHub (it does — see Repository Remotes):
 - **Trigger**: push to `main` touching `Dockerfile`, `redlib-prs.txt`, `.build/**`, `.github/**`; or `workflow_dispatch`
-- **Compile**: `ubuntu-latest` (native amd64), `docker build -f Dockerfile` → same source tree as the local build (main + `redlib-prs.txt`)
-- **Registry**: `ghcr.io/{owner}/redlib:latest` via `.github/scripts/build_and_push.sh` (login uses `GITHUB_TOKEN`)
-- Multi-arch (arm64) on GitHub is a separate item: `design/multi-arch-build.md` §11
+- **Compile**: a 2-entry matrix — amd64 on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm` (standard GitHub-hosted arm64 runner, free for public repositories since 2025-08-07). Each job runs `docker build -f Dockerfile` natively on its own architecture (no QEMU, no cross toolchain) → same source tree as the local build (main + `redlib-prs.txt`)
+- **Registry**: `.github/scripts/build_and_push.sh` pushes `ghcr.io/{owner}/redlib:amd64` and `:arm64`; then `.github/scripts/merge_manifest.sh` merges them into `:latest` and `:<git-sha>` manifest lists with `docker buildx imagetools create` (login uses `GITHUB_TOKEN`; the short sha is derived exactly like the `.forgejo/` script so both registries carry the same tag strings)
+- **Binaries differ from the `.forgejo/` path on purpose**: ghcr publishes glibc + `+crt-static` binaries, Codeberg publishes musl-static ones. Same `scratch` runtime, different files — never compare digests across registries.
+- Fork note: the namespace comes from `GITHUB_REPOSITORY_OWNER` (lowercased), so a fork pushes to its own ghcr namespace with zero edits and no secrets; package visibility inherits the repo's. Details: `design/github-actions-workflow.md` §3-§5, and the fork section in `README.md`/`README_EN.md`.
 
 Manual trigger: GitHub Actions → "Build container images" → "Run workflow"
 

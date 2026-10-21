@@ -20,7 +20,7 @@ A lightweight Reddit alternative, deployed via Docker.
 > |------|----------|
 > | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** |
 > | Prebuilt container images | `codeberg.org/lawlietr/redlib` (multi-platform `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`) |
-> | GitHub mirror (only the build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib:latest` (**amd64 only**, **`latest` only**; the repo and the package are public, so it pulls anonymously) |
+> | GitHub mirror (also a build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib` (**amd64 + arm64**, `latest` + `<git-sha>`; repo and package are public, so it pulls anonymously) |
 >
 > The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while the image path is
 > lowercase `lawlietr/redlib` (the Codeberg registry requires lowercase).
@@ -147,19 +147,44 @@ Full list: https://github.com/redlib-org/redlib/blob/main/.env.example
 
 ## Image Tags
 
-All tags are multi-platform manifest lists (`linux/amd64` + `linux/arm64`):
+**Both registries are now dual-architecture** (`linux/amd64` + `linux/arm64`) and use the **same tag scheme**:
+
+| Registry | `latest` | `<git-sha>` | per-arch tags |
+|---|---|---|---|
+| `codeberg.org/lawlietr/redlib` (primary, musl static) | manifest list | manifest list | `amd64` / `arm64` |
+| `ghcr.io/lawlietr/redlib` (mirror, glibc static) | manifest list | manifest list (since 2026-10-21) | `amd64` / `arm64` |
 
 | Tag | Description |
 |-----|-------------|
-| `latest` | Latest build (rolling tag) |
-| `<git-sha>` | Reproducible version pinned to a git commit SHA |
+| `latest` | Latest build (rolling tag, multi-platform manifest list) |
+| `<git-sha>` | Reproducible version pinned to a git commit SHA (multi-platform) |
+| `amd64` / `arm64` | Single-architecture images, mainly used for the CI manifest merge; pulling `latest` or `<git-sha>` picks the right architecture automatically |
 
-> **Note**: `amd64` and `arm64` tags also exist in the registry but are used
-> internally for CI manifest merging. Users should pull `latest` or `<git-sha>`.
->
-> A mirror built by GitHub Actions also exists: `ghcr.io/lawlietr/redlib:latest`
-> (**amd64 only**, **`latest` only** — no `<git-sha>` tag; the repo and the ghcr package have been
-> public since 2026-10-21, so it pulls **without any token**).
+> ⚠ **The two registries do not share digests**: the `.forgejo/` pipeline publishes musl-static
+> binaries while the GitHub pipeline publishes glibc + `+crt-static` ones (both run on `scratch` and
+> behave the same, but they are not the same file). When switching registries compare tags, not digests.
+> Since 2026-10-21 the repository and the ghcr package are public, so **no token is needed to pull**.
+
+## Can a fork build its own images easily?
+
+Yes — that is the point of keeping this repo to *merge and package* (no redlib sources): a fork gets
+its own images without editing a single file.
+
+| Item | Behaviour on a fork |
+|------|---------------------|
+| Local build | `docker build -t redlib .` works out of the box, **no secrets required** (the `Dockerfile` only fetches the public upstream and `pull/<n>/head`); produces the **host architecture** only |
+| GitHub Actions | the guard is `github.server_url == 'https://github.com'`, which is true on your own GitHub fork → pushing to your own `main` runs the amd64 job, the arm64 job and the manifest job |
+| Push target | **`ghcr.io/<your own owner, lowercased>/redlib`** — the namespace comes from `$GITHUB_REPOSITORY_OWNER`, so **no script edit is needed**, and nothing of ours is touched |
+| Secrets to configure | **none**. Only `${{ secrets.GITHUB_TOKEN }}` (provided automatically); `permissions: contents/packages: write` is declared in the workflow (the package is created on first push) |
+| Path that will not run | `.forgejo/**` (needs our self-hosted runner plus the `CODEBERG_PAT` secret; that workflow is also not interpreted on GitHub) |
+| Changing the PR bake | edit `redlib-prs.txt` only (one line per PR: `<PR number> <reviewed head SHA> # note`). A merge conflict caused by upstream drift **fails the build loudly** instead of silently dropping changes (`design/upstream-pr-bake.md` §5) |
+
+**Four things a fork should know**:
+
+1. Actions are **disabled by default on forks** — enable them once from the Actions tab, otherwise pushes do not run.
+2. Triggers: changes to `Dockerfile`, `redlib-prs.txt`, `.build/**` or `.github/**` (or a manual dispatch); documentation-only changes do not rebuild the image.
+3. **Opening a PR from a fork does not publish an image** (the workflow does not listen to `pull_request`); only pushes to your own `main` do.
+4. The ghcr package **inherits the repository visibility**: a private fork gives you a private `ghcr.io/<fork owner>/redlib`, where anonymous pulls return `denied` — that looks like "the image does not exist" but is a visibility problem (symptom table in `design/github-actions-workflow.md` §3).
 
 ## Release notes → `RELEASE_NOTES.md`
 
@@ -182,7 +207,12 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
 - Push target: `codeberg.org/lawlietr/redlib`. Each build produces two multi-platform
   manifest lists — `latest` (rolling) and `<git-sha>` (reproducible pin) — both containing
   `linux/amd64` and `linux/arm64`.
-- GitHub Actions (`.github/workflows/build.yml`): builds the **same** `Dockerfile` and the same PR bake on `ubuntu-latest` (amd64) → `ghcr.io/lawlietr/redlib:latest`. Details: `design/github-actions-workflow.md`.
+- GitHub Actions (`.github/workflows/build.yml`): a matrix of two build jobs plus one manifest job.
+  amd64 runs on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm` (a standard arm64 hosted runner, free for
+  public repositories), both compiling **this same `Dockerfile`** and the same PR bake natively; each
+  pushes `:amd64` / `:arm64`, then `.github/scripts/merge_manifest.sh` merges them with
+  `docker buildx imagetools create` into `ghcr.io/lawlietr/redlib:{latest,<git-sha>}` (multi-platform
+  manifest lists). Details: `design/github-actions-workflow.md`.
 - Details and troubleshooting: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
 
 ## Troubleshooting

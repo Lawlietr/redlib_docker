@@ -173,9 +173,12 @@ docker buildx imagetools create \
   → 重建 runner 容器 → 驗證 daemon 能起 + 能原生交叉編譯兩 target —— P0 上線前最後一步 infra。
 - [ ] **codeberg 多平台 manifest 實測驗證**（第 9.3 項）—— reliability 關鍵。
 - [x] **amd64 libc 子決策 B1/B2**（第 4 項）—— 已定案 B1（兩檔統一 musl）。
-- [ ] 12 機 30GB 在「兩檔同時暂存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。
-- [ ] GitHub Actions（`.github/workflows/build.yml`，ghcr.io 備援）目前**暫緩**，
-      待有 GitHub repo 再同步兩平台（見 `design/github-actions-workflow.md`）。
+- [ ] 12 機 30GB 在「兩檔同時暫存」時的峰值（Plan B sequential 可避；Plan A 需逐檔 push/prune）。
+- [x] **GitHub Actions（`.github/workflows/build.yml`，ghcr.io 備援）已同步兩架構**（2026-10-21）：
+      不再「暫緩」。改走**原生 arm64 hosted runner**（`ubuntu-24.04-arm`，public repo 免費 GA），
+      不用 QEMU、不用交叉工具鏈；四個 tag 與 codeberg 版對齊（`latest`/`<git-sha>`/`amd64`/`arm64`）。
+      ⚠ 这条路產的是 **glibc 靜態** binary（本檔的 Dockerfile 的 `+crt-static`），不是本檔描述的 musl 產物；
+      見 `design/github-actions-workflow.md` §4/§5。
 
 ## 11. 與 upstream 差異
 

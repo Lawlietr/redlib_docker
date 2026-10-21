@@ -69,12 +69,17 @@ regression from this release; it just means baking that upstream PR does not
 actually restore share links.
 
 **How to pull / pin.** Tags carrying this change:
-`codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (both multi-arch,
-amd64 + arm64). The GitHub-side mirror `ghcr.io/lawlietr/redlib:latest` is amd64
-only and publishes `latest` only (no pinnable `<git-sha>` tag); the repository and
-the package were switched to public on 2026-10-21, so it now pulls anonymously —
-verified against a clean Docker configuration, where the pulled digest matched the
-digest the Actions run pushed. Prefer the Codeberg tags when you need to pin.
+`codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (multi-arch, amd64 + arm64).
+The GitHub-side mirror **is now multi-arch too and is also pinnable**: as of 2026-10-21 it publishes
+`ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`, built natively on amd64 and arm64
+GitHub-hosted runners, and the repository/package are public so it pulls anonymously (verified from a
+clean Docker configuration; the pulled digest matched the digest the Actions run pushed).
+One caveat when switching registries: the GitHub pipeline publishes **glibc-static** binaries while
+the Codeberg pipeline publishes **musl-static** ones — same `scratch` runtime, different files, so
+compare tags and behaviour, never digests. The earliest `<git-sha>` tag on ghcr is `d572b2e`; earlier
+ghcr builds only ever had `latest`. `ghcr.io/lawlietr/redlib:d572b2e` and
+`codeberg.org/lawlietr/redlib:15cc3c1` contain the same baked redlib source (the commits differ only
+in CI files), so either one carries this change.
 `latest` is a rolling tag, so a re-pull plus container recreation is required;
 a plain `docker compose up -d` with a `build:` key present will *not* pull the
 registry image. To keep a reproducible deployment across future bake changes,

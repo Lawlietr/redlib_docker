@@ -44,13 +44,11 @@
 - **優先級**：P2（有價值、可排後；先要決策再動 build）。
 - 細節：`design/upstream-pr-bake.md` §3、§4。
 
-## P3 — GitHub Actions 產 arm64（對稱到 ghcr）
-- **做什麼**：讓 GitHub 端也能產 arm64（目前只 amd64），或改用與本地 Forgejo 相同的 musl 交叉編譯路徑。
-- **為什麼**：目前 ghcr 鏡像只有 amd64；多架構只由本地 runner 發佈。三條可行路（交叉工具鏈 / QEMU buildx / arm64 hosted runner）的取捨已記錄。
-- **優先級**：P3。
-- **附加（2026-10-21）**：ghcr 已轉公開，但仍只推 `latest`、沒有 `<git-sha>` tag → 無法 pin 版本；若真動到這條，順手把 sha tag 補上（與 codeberg 版對稱）。
-- 細節：`design/github-actions-workflow.md` §5、§3（公開現況與匿名拉取複驗記錄）、`design/multi-arch-build.md` §11。
-
+## P2 — 在真的 arm64 硬體上跑一下 ghcr 版映像（收尾驗證）
+- **做什麼**：在 arm64 機器上 `docker pull ghcr.io/lawlietr/redlib:latest`，起容器後開一個貼文頁確認。
+- **為什麼**：ghcr 的 arm64 映像目前只有**靜態證據**：manifest list 有 arm64 entry，`docker cp` 出來的 binary 是 `ELF 64-bit LSB executable, ARM aarch64, statically linked`、無 INTERP、無 dynamic section。本機是 x86_64 且沒有 qemu binfmt（`tonistiigi/binfmt --install arm64` 在此主機無效，`docker run --platform linux/arm64` 會 `exec format error`），所以 arm64 版**尚未實際執行過**。注意 ghcr 版是 glibc 靜態、和 12 機的 musl 版是不同產物，不能拿 codeberg 版的實測結果直接套用。
+- **優先級**：P2（CI 與 registry 都已綠燈，只差執行驗證；codeberg 版 arm64 已在真硬體跑過）。
+- 細節：`design/github-actions-workflow.md` §5（上線證據與三條路的取捨）。
 ## P3 — 上游 #560 分享連結的 id 條件錯誤（**已知問題，暫不處理**）
 - **做什麼**：**不處理**（2026-10-21 決定），但**必須記得**：在未重新評估之前，任何地方都不能宣稱分享連結已修；要重啟就先重讀 §8.9。
 - **為什麼**：上游那支 PR 的 id 長度條件只接受 8–12 字元，而現行 post short id 是 7 字元 → 兩條分享連結入口（subreddit 版與使用者版）對現代 post 一律 404，錯誤頁文字是 `Nothing here`。路由本身有註冊、有在跑（用 8 字元假 id 可探到另一種錯誤），只是條件把人擋在門外。屬上游條件錯誤，不是我們 bake 失手。
@@ -58,6 +56,7 @@
 - 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩條探測 URL）與 §2 表格的 ⚠ 注記、`design/error-triage-playbook.md` §4.1（路由偵測手法）、`RELEASE_NOTES.md` 的 pre-existing known issue 段。
 
 ## 近期完成
+- 2026-10-21：**ghcr 也變成雙架構 + 可 pin**（commit `d572b2e`，run `39543407871`，build (amd64) / build (arm64) / manifest 三 job 全綠）。做法是**原生 arm64 hosted runner**（`ubuntu-24.04-arm`，public repo 自 2025-08-07 免費 GA），不用 QEMU、不用交叉工具鏈，arm64 job 全程約 4 分鐘。tag 現在與 codeberg 版完全對齊：匿名 `tags/list` → `latest`/`arm64`/`amd64`/`d572b2e`，且 `latest` 與 `<git-sha>` 都是 `manifest.list.v2`（entries = amd64 + arm64）。新增 `.github/scripts/merge_manifest.sh`（`docker buildx imagetools create`），`build_and_push.sh` 改成吃 `ARCH`。⚠ ghcr 版是 **glibc 靜態** binary（與 12 機的 musl 版是不同產物，digest 不可比）；靜態驗證已做，執行驗證見上方 P2。
 - 2026-10-21：**GitHub repo 與 ghcr package 轉為 public**（使用者在 UI 手動翻轉；此前 repo private → package 默默繼承 private，匿名拉取會被 `denied`，很容易誤判成「映像不存在」）。複驗（完全匿名、不帶憑證）：`docker pull ghcr.io/lawlietr/redlib:latest` 成功，digest `sha256:93606cc4…` **與 Actions log（run 39534174002 / commit 15cc3c1）完全一致** → 公開的就是含 #592 那輪；跑起來後貼文頁 200、0 則留言 permalink 200、負 control 404、無 panic。同步把 `design/github-actions-workflow.md` §3/§8 與兩個 README 的 ghcr 段落從「private / 需 `read:packages` token」改為公開現況（仍是 amd64-only、只有 `latest`）。公開後做了 secrets 健檢：全歷史 232 個 blob 掃 token/私鑰 pattern → **0 命中**，`.env.example` 內容全空，CI 只用 `${{ secrets.* }}`。
 - 2026-10-21：**逐功能線上核對跑完**（對 `https://ddit.avpclub.uk` 與本地同映像容器）。通過：影片 proxy 的大寫 `CMAF`/`DASH` 路徑（206 `video/mp4`）、舊 `/vid` 路徑 404、0 則留言 permalink 不 panic、`loading="lazy"` 且無 SVG 包裝、路徑式排序正常、預設 post sort 對新訪客生效（用**只抽掉 #521** 的對照映像定因：抽掉後 env 失效）。順帶定因兩個**非回歸**：`?sort=` 向來是 no-op（含/不含 #521 都一樣）、不存在的 sub 回 200 空頁屬上游行為（線上與本地 byte 數一致）。未通過一項：分享連結（見上方 P1 條目）。
 - 2026-10-21：**雙架構上線確認** —— amd64 與 arm64 的 redlib container 都已架起來，實測兩個架構都正常運行（跑的是含 #592 的六支 bake 映像）。逐功能線上核對（影片 proxy、panic、post sort、分享連結、lazy-load）仍未做，保留在上方 P1 條目。

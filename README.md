@@ -118,6 +118,46 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 與我們的映像不保證 bit-for-bit 相同。需要固定版本時：拉 registry 的 **`<git-sha>` tag**，
 > 或 `--build-arg REDLIB_BRANCH=<commit 或 tag>` pin 住。
 
+## 映像標籤（Tags）
+
+**兩個 registry 現在都是雙架構**（`linux/amd64` + `linux/arm64`），而且 **tag 命名一致**：
+
+| Registry | `latest` | `<git-sha>` | 每架構 tag |
+|---|---|---|---|
+| `codeberg.org/lawlietr/redlib`（主，musl 全靜態） | ✅ manifest list | ✅ manifest list | `amd64` / `arm64` |
+| `ghcr.io/lawlietr/redlib`（備援，glibc 靜態） | ✅ manifest list | ✅ 自 2026-10-21 | `amd64` / `arm64` |
+
+| 標籤 | 說明 |
+|------|------|
+| `latest` | 最新建置（rolling tag，多平台 manifest list） |
+| `<git-sha>` | 以 git commit SHA 標記的可重現版本（多平台） |
+| `amd64` / `arm64` | 單架構映像，主要供 CI 內部 manifest merge 使用；一般使用者拉 `latest` 或 `<git-sha>` 就會自動選對架構 |
+
+> ⚠ **兩個 registry 的 digest 不會相同**：`.forgejo/` 產的是 musl 靜態 binary，GitHub 端產的是
+> glibc + `+crt-static` 靜態 binary（都是 `scratch`、行為一致，但不是同一個檔案）。跨 registry 時比 tag，
+> 不要比 digest。ghcr 端自 2026-10-21 起公開，**匿名可拉**（不需 token）。
+
+## Fork 之後能輕易產自己的鏡像嗎？
+
+能——這正是本 repo 只做「合併與打包」（不含 redlib 源碼）的好處：fork 不需要改任何檔案就能得到自己的鏡像。
+
+| 項目 | fork 後的行為 |
+|------|----------------|
+| 本機 build | `docker build -t redlib .` 開箱可用，**不需任何 secret**（`Dockerfile` 只抓公開的 upstream 與 `pull/<n>/head`）；只產**本機架構** |
+| GitHub Actions | guard 是 `github.server_url == 'https://github.com'`，在自己的 GitHub fork 上為真 → push 到自己 `main` 就自動跑（amd64 + arm64 兩個 job + manifest job） |
+| 推送目標 | **`ghcr.io/<自己的 owner（自動小寫）>/redlib`** — namespace 由 `$GITHUB_REPOSITORY_OWNER` 推導，**不用改腳本**；也不會碰到我們的 namespace |
+| 需要設的 secret | **無**。只用 `${{ secrets.GITHUB_TOKEN }}`（Actions 自動提供），`permissions: contents/packages: write` 已在 workflow 內声明（首次推送自動建立 package） |
+| 不會跑的路 | `.forgejo/**`（要自架 runner + `CODEBERG_PAT`；該 workflow 在 GitHub 上也不會被解譯） |
+| 換 PR 組合 | 只改 `redlib-prs.txt`（每行 `<PR 編號> <reviewed head SHA> # 註記`）。上游漂移導致 merge 衝突時 build 會**響亮失敗**，不會靜默吃掉改動（`design/upstream-pr-bake.md` §5） |
+
+**fork 要注意的四件事**：
+
+1. fork 上 **Actions 預設關閉**，要在 Actions 頁點一次啟用，否則 push 不會跑。
+2. 觸發條件：`Dockerfile`、`redlib-prs.txt`、`.build/**`、`.github/**` 變更（或手動 dispatch）；只改文件不會重建。
+3. **從 fork 開 PR 不會推鏡像**（workflow 不監聽 `pull_request`），只有 push 到自己的 `main` 才會。
+4. ghcr package 的**能見度繼承 repo**：fork 是 private → `ghcr.io/<fork owner>/redlib` 也是 private，
+   匿名拉取會被 `denied`（看起來像「鏡像不存在」，實際是能見度問題；symptom 對照表見 `design/github-actions-workflow.md` §3）。
+
 ## 環境變數
 
 參考 `.env.example` 完整清單。常見變數：
@@ -139,21 +179,6 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 完整清單：https://github.com/redlib-org/redlib/blob/main/.env.example
 
-## 映像標籤（Tags）
-
-所有標籤皆為多平台 manifest list（`linux/amd64` + `linux/arm64`）：
-
-| 標籤 | 說明 |
-|------|------|
-| `latest` | 最新建置（rolling tag） |
-| `<git-sha>` | 以 git commit SHA 標記的可重現版本 |
-
-> **注意**：`amd64` 與 `arm64` 標籤也存在於 registry 中，但僅供 CI 內部
-> manifest merge 使用，不建議使用者直接拉取。
->
-> 另有 GitHub Actions 產的鏡像備援 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**、**只有 `latest` 一個 tag**，
-> 沒有 `<git-sha>`；repo 與 ghcr package 自 2026-10-21 起公開，**不需要 token 就能拉**）。
-
 ## 更新說明（Release notes）→ `RELEASE_NOTES.md`
 
 完整 changelog 在 **`RELEASE_NOTES.md`**（英文）。最近一輪（2026-10-21）要點：
@@ -173,7 +198,11 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 - 推送目標：`codeberg.org/lawlietr/redlib`，
   每輪建置產生 `latest`（rolling）與 `<git-sha>`（可重現 pin）兩個多平台 manifest list，
   同時包含 `linux/amd64` 與 `linux/arm64`。
-- GitHub Actions（`.github/workflows/build.yml`）：用**同一份** `Dockerfile` 與同一份 PR bake，在 `ubuntu-latest` 原生編 amd64 → `ghcr.io/lawlietr/redlib:latest`。細節：`design/github-actions-workflow.md`。
+- GitHub Actions（`.github/workflows/build.yml`）：**矩陣兩個 job + 一個 manifest job**。
+  amd64 在 `ubuntu-latest`、arm64 在 `ubuntu-24.04-arm`（public repo 免費的原生 arm64 hosted runner），
+  都用**同一份** `Dockerfile` 與同一份 PR bake 原生編譯，各自推 `:amd64`/`:arm64`，
+  再由 `.github/scripts/merge_manifest.sh` 以 `docker buildx imagetools create` 合併成
+  `ghcr.io/lawlietr/redlib:{latest,<git-sha>}`（多平台 manifest list）。細節：`design/github-actions-workflow.md`。
 - 細節與故障排除：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`、`design/multi-arch-build.md`。
 
 ## 故障排除
