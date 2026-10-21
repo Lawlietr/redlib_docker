@@ -45,7 +45,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | [#549](https://github.com/redlib-org/redlib/pull/549) | `9703ca81` | `REGEX_URL_VIDEOS` → `(DASH\|CMAF)`；route `/vid/:id/:size` → `/vid/:id/:prefix/:size`；`format_url` 加 3-segment capture；`post_hint == "rich:video"` 走 preview fallback；**並同步更新 `format_url` 測試** | CMAF 影片不再掉成不 proxy 直鏈；外部轉檔媒體可用。**breaking**：舊 `/vid/{id}/{size}` 消失 |
 | [#542](https://github.com/redlib-org/redlib/pull/542) | `29c9bda4` | `templates/post.html`：`single_thread && comments.len() > 0` | 修 0 則留言 permalink 的 panic（= 原 fork patch D1） |
 | [#521](https://github.com/redlib-org/redlib/pull/521) | `93c03bb1` | `src/subreddit.rs`：`post_sort` 由 `req.cookie("post_sort")` 改 `setting(&req, "post_sort")` | **`REDLIB_DEFAULT_POST_SORT` 不必先存設定才生效**（直接關係本 repo 的 env） |
-| [#560](https://github.com/redlib-org/redlib/pull/560) | `7a284d30` | 新增 `/u/:name/s/:id` 分享連結處理 | 使用者文章分享連結不再 404 |
+| [#560](https://github.com/redlib-org/redlib/pull/560) | `7a284d30` | 新增 `/u/:name/s/:id` 分享連結處理（id 長度 guard `(8..12)`） | ⚠ **實際上用不了**：現行 post id 是 7 字元 → 一律 `Nothing here` 404；既有的 `/r/:sub/s/:id` 同病。見 §8.9 |
 | [#539](https://github.com/redlib-org/redlib/pull/539) | `514202ad` | `templates/utils.html` 移除 `<svg><image>` 包裝，改直出 `<img loading="lazy">` | 圖片 lazy-load；同時覆蓋原 fork patch D3 的 SVG 部分 |
 | [#592](https://github.com/redlib-org/redlib/pull/592) | `1e9515eab8d0` | `src/client.rs`：`encode_thread_route()` 把 `/r/<sub>` 與 `comments` 之間那**一個** slash 編碼成 `%2f`（放進 `json()` 入口，涵蓋所有呼叫者）；另加 `non_json_response_error()` 把 403 區塊頁報成「Reddit blocked this request (403 Forbidden)…」而非 parse error。附 5 個純函式測試 | **貼文頁恢復可用**（此前所有實例的 `/r/x/comments/<id>/…` 全數 403 → 前端 `Failed to parse page JSON data: expected value at line 1 column 1`）。⚠ **這是繞行，不是根治**，見 §8.8 |
 
@@ -100,22 +100,27 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 **本地（x86-64，工具鏈在容器內）**
 - [x] `docker build -t redlib:local-test .` 成功；log 中出現 6 行 `Merging PR #<n> -> <sha>` 且無 `warning:`（2026-10-21：本地與兩條 CI 皆是 `Baked 6 PR(s)`）
 - [x] `docker run --rm --entrypoint /redlib redlib:local-test --help` 可執行（2026-10-21 以更強的證據取代：published 映像 `codeberg.org/lawlietr/redlib:15cc3c1` 實際起服務並回應請求）
-- [ ] 靜態確認 baked 樹：`CMAF`、`rich:video`、`/vid/:id/:prefix/:size`、`comments.len() > 0`、`setting(&req, "post_sort")`、`/u/:name/s/:id` 都在
+- [x] 靜態確認 baked 樹：`CMAF`、`rich:video`、`/vid/:id/:prefix/:size`、`comments.len() > 0`、`setting(&req, "post_sort")`、`/u/:name/s/:id` 都在
+  （2026-10-21 以更強的 **runtime 證據**取代靜態 grep：六項都在線上映像上觀察到行為——大寫 `CMAF`/`DASH` prefix 的 `/vid/` 連結、`/u/:name/s/:id` 路由已註冊（拿 8 字元 id 探得到）、`REDLIB_DEFAULT_POST_SORT` 生效、`loading="lazy"` 且無 `<svg><image`）
 
-**線上（部署後）**
-- [ ] CMAF 影片 post → `/vid/{id}/cmaf/{size}` 200；DASH → `/vid/{id}/dash/{size}` 200
-- [ ] 0 則留言 post 的 permalink 不 panic
-- [ ] 未存過設定的新訪客：`REDLIB_DEFAULT_POST_SORT` 生效
-- [ ] `/u/<user>/s/<postid>` 分享連結正確導向
-- [ ] 文章圖片帶 `loading="lazy"`，版面不破（#539 改了 post media 的 DOM 結構）
+**線上（部署後）**（2026-10-21 已在 `https://ddit.avpclub.uk` 逐項跑過；需要特定 env 的項目在**本地同映像容器**補測）
+- [x] CMAF 影片 post → `/vid/{id}/CMAF/{size}.mp4` 正常（`/vid/00npr2ko1nwh1/CMAF/1080.mp4` → 206 `video/mp4`，用 Range 請求）；DASH → `/vid/{id}/DASH/{size}.mp4` 正常（`/vid/v0ckpi39w0db1/DASH/1080.mp4` → 206 `video/mp4`）。
+  注意 prefix 是**大寫** `CMAF`/`DASH`（取自 Reddit 的 media 標記），不是小寫
+- [x] 0 則留言 post 的 permalink 不 panic（#542）：`/r/capybara/comments/1xahdap/`、`/r/capybara/comments/1x89e79/`（皆 0 則留言）與 `…/1xahdap/x/` → 200、留言區塊 0 個、無 panic 頁
+- [x] 未存過設定的新訪客：`REDLIB_DEFAULT_POST_SORT` 生效（#521）——**用對照映像定因**：同 sub 同刻，
+  含 #521 的映像設 `REDLIB_DEFAULT_POST_SORT=new` 後順序明顯改；不含 #521 的映像設了也**無效**（順序跟未設一模一樣）
+- [ ] `/u/<user>/s/<postid>` 分享連結正確導向 —— **未通過**：上游 #560（加上既有的 `/r/:sub/s/:id`）的 id 長度 guard 把現行 7 字元 post id 全部拒掉，詳 §8.9
+- [x] 文章圖片帶 `loading="lazy"`，版面不破（#539 改了 post media 的 DOM 結構）：貼文頁 3 個 `<img loading="lazy" …>`、`<svg><image` 包裝 0 個
 - [x] 貼文頁 `/r/<sub>/comments/<id>/<slug>/` 200 且留言正常（#592）；對照組（不含 #592 的舊映像）應精確重現 `Failed to parse page JSON data: expected value at line 1 column 1`（2026-10-21 雙映像 A/B 兩半都成立）
-- [x] 不存在的 post / sub 仍回**正確的 Reddit 404/400 錯誤頁**，不是 parse error（#592 第二個 commit 的錯誤分級）
+- [x] 不存在的 **post** → 正確的 Reddit 404 錯誤頁（不是 parse error；#592 第二個 commit 的錯誤分級）。
+  不存在的 **sub** 則回 **200 空頁**——上游/Reddit 側行為，線上跟我們自己的容器 **byte 數完全一致**（6958），
+  跟 #592 無關（`encode_thread_route()` 只改寫含 `/comments` 的路徑）
 - [x] 列表端點未受 #592 影響：`/r/<sub>`、`/r/popular`、`/r/all`、`/search`、`/u/<user>`、`/r/<sub>/duplicates/<id>`（2026-10-21 全部 200）
-- [ ] 舊 `/vid/{id}/{size}` 連結 → 404（**已知 breaking**，見 §8）
+- [x] 舊 `/vid/{id}/{size}` 連結 → 404（**已知 breaking**，見 §8）：`/vid/00npr2ko1nwh1/1080.mp4`、`/vid/1qc7bbd5rowh1/480.mp4` → 404
+- [x] 路徑式排序正常：`/r/<sub>`、`/new`、`/top?t=day`、`/controversial?t=week` 順序各不同（`rising` 在小 sub 可能跟 hot 重合，不計）
 
 > 2026-10-21：**上線確認已完成於兩個架構**——amd64 與 arm64 的 container 都已架起來、實測兩邊都正常運行（`codeberg.org/lawlietr/redlib:latest` = `15cc3c1`，同一個 manifest list）。
-> 上面仍標 `[ ]` 的項目是**逐功能**的線上確認（影片 proxy 新格式、0 則留言 panic、預設 post sort、分享連結、lazy-load、舊 `/vid` 連結 404），
-> 這些需要對應的貼文/設定才能驗，跟「容器能不能跑」不同層次，別因為架構實測通過就當成已核。
+> 逐功能核對也已跑完（見上方打勾情形）。**目前唯一未通過的是分享連結**，其性質是上游 PR 自身的 guard 條件錯誤，不是我們的 bake 失手（見 §8.9）。
 
 ## 8. 風險 / Gotchas
 
@@ -132,6 +137,17 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
    - Reddit 開始 normalise 該編碼（把 `%2f` 還原成 `/` 再比對路徑）→ 貼文頁再度全數失效。屆時**不會**再出現誤導性的 parse error，而是 `Reddit blocked this request (403 Forbidden): Reddit now requires a logged-in session for this endpoint | <path>`（來自 `client.rs` 的 `non_json_response_error()`）——**下次使用者回報先 grep 這個字串**，就能直接判定「舊繞行失效」而不是新故障。
    - 上游同一事件還標明**不在這支 PR 範圍**的鄰居問題：首頁 `hot.json` 的 parse error（上游 #589）、Anubis PoW 擋程式化存取（上游 #567）。本機 2026-10-21 實測這兩個端點仍正常，但別误以為一併修好。
    - 上游 PR 未合併（無 review、1 位參與者、1 個 👎），因此 head 可能被 force-push：`redlib-prs.txt` 的 SHA 一漂移就要重跑 `design/error-triage-playbook.md` 的 A/B，不能只信 build 成功。
+9. **#560（分享連結）實際上用不了：上游 PR 自己的 id 長度 guard 錯了**（2026-10-21 逐功能核對發現，§7 那一項因此仍未打勾）。
+   `src/main.rs` 的 `app.at("/u/:name/s/:id")` 用的是 `Some(id) if (8..12).contains(&id.len())`，而 Reddit 現行的 post short id 是 **7 字元**（例：`1x89e79`）→ 一律落到 `_ => error(req, "Nothing here")`，回 404。
+   決定性證據（同一支映像上）：`/u/trewqpoiuuy/s/1x89e79`（7 字元）→ `Error: Nothing here`；`/u/trewqpoiuuy/s/1x89e79a`（8 字元、不存在）→ `Error: Post ID is invalid. It may point to a post on a user that has been banned.`
+   → 路由有註冊、有在跑，**只有長度 guard 把人擋在門外**。既有的 `/r/:sub/s/:id`（ subreddit 版分享連結）用的是同一個 `8..12` 條件，所以**兩種分享連結現在都壞**。
+   這不是我們 bake 造成的（#560 之前那條 route 根本不存在），但 bake #560 等於**沒辦法**宣稱「分享連結已修」。
+   處理方向（尚未做）：自製 patch 把條件改成含 6–7 字元（Reddit 舊 post 有 5–6 字元 id），或上游開 issue；屬於 `design/fork-patch-dash-cmaf-bugfixes.md` 那類自製 patch（新 D 項）。
+10. **`?sort=` 查詢參數向來是 no-op，與 #521 無關**（2026-10-21 定因）：含 #521 與不含 #521 的兩支映像，`/r/<sub>?sort=new` 與 `?sort=top` 都跟預設順序相同；會變的是**路徑式**排序（`/new`、`/top?t=day`、`/controversial?t=week`）。
+    → §8.2 当初要求的「回歸 `/r/x/?sort=`」可以結了：**那是上游一向不支援的入口，不是 #521 的回歸**。以後別再為這個查 bake。
+11. **Reddit 側的 degenerate 資料會渲染成怪頁面，不是在我們這層**（2026-10-21 記錄，供下次分流用）：
+    - 不存在的 sub → **200 空頁**（不是 404）。線上與本地同映像 **6958 bytes 完全一致** → 上游行為。
+    - 某些 sub（例：`r/DeathByCapybara`）的列表渲染出**空 subreddit、空作者、空 permalink** 的 post（`href=""`、`r/`、`u/`）→ Reddit 回傳的 stub 資料；同樣在本地同映像重現（9098/9100 bytes 等級）。想要那種 sub 的可用列表，得在上游處理，不是我們的 bake 問題。
 
 ## 9. 與 fork patch 計畫（P1）的關係
 

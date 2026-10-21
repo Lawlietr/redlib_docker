@@ -10,13 +10,19 @@
 |----|------|
 | **P0** | 緊急且重要：阻塞部署/上線、影響正確性或穩定性，需立即處理 |
 | **P1** | 重要不緊急：影響可靠性/可觀測性/品質，近期要推但非阻塞 |
-| **P2** | 有价值但可排後：改善體驗、重構、非阻塞的補齊 |
+| **P2** | 有價值但可排後：改善體驗、重構、非阻塞的補齊 |
 | **P3** | 想法/可選：nice-to-have、長期評估項 |
 
 ## 維護慣例
 - 完成項移到「近期完成」並標日期；**待辦一律放上方對應優先級**，不要只寫在「近期完成」的敘述裡。
 - 新增待辦時直接開新條目（優先級由你指定或先問）。
 - 每條待辦保持「做什麼 + 為什麼/範圍 + 優先級 + design 連結」四要素，細節不展開。
+
+## P1 — 分享連結全形失效：上游 id 長度 guard 錯（自製 patch 候選）
+- **做什麼**：把分享連結路由的 id 長度條件放寬到涵蓋 5–7 字元（現行 Reddit post short id 是 7 字元），或先對上游提 issue；兩條入口（subreddit 版與使用者版）都要蓋。
+- **為什麼**：上游那支 PR 的 guard 只接受 8–12 字元，所以所有分享連結對現代 post 都回 404（錯誤页文字是 `Nothing here`）。路由本身有註冊、有在跑（用 8 字元假 id 可探到），只是條件把人擋在門外——**這是上游條件錯誤，不是我們 bake 失手**，但 bake 它並不能宣稱分享連結已修。
+- **優先級**：P1（站外進來的連結全壞；但不阻塞站內使用，故非 P0）。
+- 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩個探測 URL）、`design/error-triage-playbook.md` §4.1（路由偵測手法）。
 
 ## P2 — 鄰居故障：首頁與人機驗證（不在 #592 範圍）
 - **做什麼**：另外單獨評估「首頁 feed 的 parse error」與「Anubis PoW 擋程式化存取」兩條上游 issue 對應的 PR。
@@ -40,7 +46,7 @@
 ## P2 — Tier 2 上游 PR 的取捨（需決策）
 - **做什麼**：逐支決定是否加入 `redlib-prs.txt`：#572（RSS 媒體，取代 #563）、#568（footer 原始碼連結）、#566（geo filter）、#577（Tor onion 入口）、#564（每頁文章數，上游 WIP）、#578（Markdown 回應）。
 - **為什麼**：都對現行 main clean-merge；但 #566/#564/#568 會新增 runtime env（需同步 `.env.example` 與 AGENTS.md 變數表），#577 與先前「不採用 fork 的 Tor」決策同類、需明確翻案。
-- **優先級**：P2（有价值、可排後；先要決策再動 build）。
+- **優先級**：P2（有價值、可排後；先要決策再動 build）。
 - 細節：`design/upstream-pr-bake.md` §3、§4。
 
 ## P3 — GitHub Actions 產 arm64（對稱到 ghcr）
@@ -50,6 +56,7 @@
 - 細節：`design/github-actions-workflow.md` §5、`design/multi-arch-build.md` §11。
 
 ## 近期完成
+- 2026-10-21：**逐功能線上核對跑完**（對 `https://ddit.avpclub.uk` 與本地同映像容器）。通過：影片 proxy 的大寫 `CMAF`/`DASH` 路徑（206 `video/mp4`）、舊 `/vid` 路徑 404、0 則留言 permalink 不 panic、`loading="lazy"` 且無 SVG 包裝、路徑式排序正常、預設 post sort 對新訪客生效（用**只抽掉 #521** 的對照映像定因：抽掉後 env 失效）。順帶定因兩個**非回歸**：`?sort=` 向來是 no-op（含/不含 #521 都一樣）、不存在的 sub 回 200 空頁屬上游行為（線上與本地 byte 數一致）。未通過一項：分享連結（見上方 P1 條目）。
 - 2026-10-21：**雙架構上線確認** —— amd64 與 arm64 的 redlib container 都已架起來，實測兩個架構都正常運行（跑的是含 #592 的六支 bake 映像）。逐功能線上核對（影片 proxy、panic、post sort、分享連結、lazy-load）仍未做，保留在上方 P1 條目。
 - 2026-10-21：**bake 上游 #592 修好貼文頁**（Reddit 對匿名 client 的路徑規則封鎖 → 前端 parse error）。六支 Tier 1 累積 `--no-ff` 全 clean；本地雙映像 A/B 實測（對照組精確重現舊錯誤、含 592 組 200 + 留言正常 + 回歸清單全過）；`redlib-prs.txt` 加行、`upstream-pr-bake.md` §2/§7/§8 同步（§8.8 記錄**繞行**屬性、再壞的觸發條件與 observable 字串）；新增 `RELEASE_NOTES.md`（英文）說明這只是暫緩之計而非真正修正，README 雙語加指針與警告。
 - 2026-10-21：**新增 `design/error-triage-playbook.md`** —— 從「貼文頁 parse error」事件沉澱出可重現的溯源 SOP：錯誤訊息→呼叫點映射、上游 PR 基底檢查、**含/不含候選 PR 的雙映像端到端 A/B**（取代裸 curl 探測，後者在無合法 token 時會給假陰性）、固定回歸清單（含負 control 要回正確 404 而非 parse error）、tier 判定與記帳要求（繞行 vs 根治、observable 字串）。

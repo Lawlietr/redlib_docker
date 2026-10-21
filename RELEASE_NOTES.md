@@ -56,6 +56,18 @@ working in our own test run, but do not assume they are fixed):
 **Confirmed in production on 2026-10-21**: instances on both `linux/amd64` and
 `linux/arm64` are running this image and thread pages work on both.
 
+**Found while verifying this build (pre-existing, not introduced by it)**: post
+share links are effectively dead. Both `/u/<user>/s/<post id>` and
+`/r/<sub>/s/<post id>` return 404 `Nothing here`, because the upstream route
+guard only accepts post ids of **8–12 characters** while current Reddit post
+ids are **7 characters** (e.g. `1x89e79`). The route itself is registered and
+runs — an 8-character probe id produces the different message
+`Post ID is invalid. It may point to a post on a user that has been banned.` —
+so only the length condition is wrong. Reproduced identically on the amd64 and
+arm64 instances and in a local container from the same image, so this is not a
+regression from this release; it just means baking that upstream PR does not
+actually restore share links.
+
 **How to pull / pin.** Tags carrying this change:
 `codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (both multi-arch,
 amd64 + arm64); the mirror `ghcr.io/lawlietr/redlib:latest` is amd64 only.

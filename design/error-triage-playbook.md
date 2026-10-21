@@ -53,7 +53,7 @@ git -C /tmp/redlib-triage diff --stat $(git -C /tmp/redlib-triage merge-base ori
 - 作者是否自陳「沒跑 `cargo check`／`clippy`」——若是，**我們的真實編譯就是必要的驗證**，不是加分項。
 - 作者自標的 *not fixed / out of scope* 清單（例：同一事件裡 `/r/popular/hot.json` 與 Anubis PoW
   是鄰居問題，這支 PR 不處理）→ 這些要另外進 TODO，別误以為一併修好。
-- 上游是否已把它并入 main（`git cherry main refs/pr/<n> | grep -c '^-'`）→ 若已并入，
+- 上游是否已把它並入 main（`git cherry main refs/pr/<n> | grep -c '^-'`）→ 若已並入，
   走 `design/upstream-pr-bake.md` §5 的移除程序，不要重複 bake。
 
 ## 3. 步驟三：假設驗證——優先走容器 A/B，不要靠裸 curl
@@ -62,7 +62,7 @@ git -C /tmp/redlib-triage diff --stat $(git -C /tmp/redlib-triage merge-base ori
 用 redlib 源碼裡的公開 OAuth client id 去 mint token，若 grant 用錯
 （redlib 的 MobileSpoof 走的是自訂端點，GenericWeb 走 `installed_client` grant，
 都不是直覺的 `client_credentials`），拿不到 token；此時**兩種 URL 都回同一個 403 區塊頁**，
-看起來「修法無效」，但那只是我們自己沒帶上認證。结论：
+看起來「修法無效」，但那只是我們自己沒帶上認證。結論：
 
 - 想裸探測就必須完整複製 redlib 的 token 流程（`src/oauth.rs` 的 `AUTH_ENDPOINT`、
   grant 字串、 spoof headers 全套）。成本高、易錯。
@@ -121,6 +121,24 @@ done
 > （`Error: Reddit error 404 … Not Found`）與 container log 的 `Error page rendered: Reddit error <code> …`
 > 行；要判 block 就只抓 `Reddit blocked this request (403` —— 這個串只來自 upstream 呼叫點的錯誤分級，
 > 不會出現在範本裡。
+
+### 4.1 逐功能（per-feature）核對的要領（2026-10-21 從雙架構線上實例學到）
+
+1. **素材要從站內自己渲染的 HTML 裡挖，不要猜格式**。
+   影片 proxy 的真實 URL 形狀（含大寫 `CMAF`/`DASH` prefix 與副檔名）、0 則留言的 post id
+   （`title="0 comments"` 的 anchor）、分享連結要的作者名，全部從列表/貼文頁 HTML 解析出來再用。
+   本次兩個猜錯的地方：影片路徑的 prefix 大寫與否；以及把 `?sort=` 當成排序入口（**它向來是 no-op**，
+   真入口是路徑式 `/r/<sub>/new`、`/top?t=day`、`/controversial?t=week`）。
+   猜錯入口會讓一個好端點看起來像回歸。
+2. **探路由是否註冊：用「符合條件但不存在」的 id**。
+   分享連結那個案例的決定性一招：`/u/<name>/s/<7字元真 id>` → `Nothing here`（路由沒接）
+   對比 `/u/<name>/s/<8字元假 id>` → `Post ID is invalid…`（路由有接、但 guard 把真 id 拒掉）。
+   三種結局（路由不存在 / 被 guard 擋 / 真的找不到）從錯誤訊息就能分辨，不需要讀源碼。
+3. **對照映像只抽掉被懷疑的那一支 PR**，不是抽掉全部 bake（本次只抽 #521）：
+   build 較快、結論是單因子，而且能直接證明該 PR 的價值（抽掉後 env 預設失效）。
+4. **用 byte 數分類「上游行為 vs 我們的行為」**：同一 URL 在線上實例與本地同映像
+   回傳 **byte 數完全一致**（不存在的 sub：6958=6958；stub 列表：9098≊9100），
+   就不是部署/架構/設定問題，而是上游對 degenerate Reddit 資料的渲染方式。別在 bake 裡找原因。
 
 ## 5. 步驟五：tier 判定與落地
 
