@@ -157,25 +157,36 @@ permissions:
 1. `docker cp` 把 `:amd64` 裡的 `/redlib` 抓出來 `file` + `readelf -d`：**必須是全靜態**（有 `NEEDED` 就直接 fail，
    因為 `scratch` 上沒有 loader）。⚠ 不要想用 `--help` 探測 —— **redlib 不收任何 CLI 參數**，餵它 `--help` 只會得到
    `error: unexpected argument found`（2026-10-21 實測），設定一律來自環境變數。
-2. 起容器打 `/`（最多輪詢 8 次）：必須 200，且 body ≥ 20KB（錯誤頁通常遠小於此）。
+2. 起容器打 `/`（最多輪詢 8 次等它 listen）：必須 200 且 body ≥ 20KB。
 3. 打 `/r/gaming`、`/r/AskReddit/top`：強迫容器內做 **DNS 解析 + 出網 HTTPS**。這是重點 —— 靜態 glibc 在
    `scratch` 裡沒有 `libnss_*`，理論上 `getaddrinfo` 會失敗；2026-10-21 實測（amd64）沒發生，但要由 CI 持續
-   守著，而不是靠線上發現。
+   守著，而不是靠線上發現。三個 route 都走同一套判定（見下）。
 4. arm64 側的**確定性**閘門：`docker create --platform linux/arm64` + `docker cp` 取出的 binary 必須是
    `ARM aarch64` 且全靜態（不需 qemu、不需模擬）。若 runner 上**恰好**有 `qemu-aarch64` binfmt，會额外試著真的
    起 arm64 容器打 `/`，失敗只 `::warning::`。**功能級 arm64 驗證仍需真硬體**（qemu 使用者模式不等於樹莓派），
    見 TODO 的 P2。
 
-判定尺度：
-- `>=500` 或完全無回應 → **fail**，並附 40 行 container log。
-- reddit 回 **403/429** → `::warning::`，**不 fail**：GitHub runner 的機房 IP 會被 reddit 限流，但 DNS 與往返
-  已證明成功，而這兩項才是本 job 的目的。
-- log 出現 `temporary failure in name resolution` / `failed to lookup` / `resolve` → **fail**，訊息直接點名
-  「靜態 binary 在 scratch 無法做 DNS」。
+判定尺度（三個 route 共用 `judge_route`，各最多重試 3 次、間隔 10s）：
 
-基線（2026-10-21 本機 x86_64 完整跑過一次 `smoke_test.sh`，exit 0）：amd64 binary `statically linked`、arm64 binary
-`ARM aarch64 ... statically linked`、`/` 200（54~61KB，首次輪詢常因容器還沒 listen 而 000）、`/r/gaming` 200 79,425B、
-`/r/AskReddit/top` 200 38,009B、log 無解析器錯誤。
+| 狀況 | 結果 | 理由 |
+|---|---|---|
+| `200` 且 body ≥ 20KB | **pass**，並記 `RENDERING_PROVEN` | 整條鏈（listen → DNS → 出網 → 渲染）都通 |
+| `200` 但 body 很小 | **fail**（附 body 前 500 bytes） | 那是錯誤頁，属于真缺陷 |
+| `403` / `429` / `503` | `::warning::`，**不 fail** | GitHub runner 的機房 IP 會被 reddit 限流；DNS、TLS、往返已證明，而這些才是本 job 要測的 |
+| 其他狀態或完全無回應 | **fail**（附 40 行 container log） | 映像沒在服務，或 upstream fetch 掛了 |
+| log 出現 `temporary failure in name resolution` / `failed to lookup` / `name or service not known` | **fail** | 直接點名「靜態 binary 在 scratch 無法做 DNS」 |
+
+三個 route 全部被限流時會印一條明確的 `::warning::`（說明只有 self-containment、起進程、HTTP 服務被證明），
+不會假裝渲染通過。**刻意不用 `>=500` 當唯一 fail 條件**：redlib 有快取，20 連發同一個 subreddit 在本機全
+200 且 log 無錯誤，所以限流的形狀很難在 CI 穩定重現，硬把它當失敗只會得到紅燈噪音。
+
+基線（2026-10-21 本機 x86_64 完整跑過 `smoke_test.sh`，exit 0）：amd64 binary `statically linked`、arm64 binary
+`ARM aarch64 ... statically linked`、`/` 200 62,216B（第一次輪詢 000 是正常的啟動競態）、`/r/gaming` 200 79,425B、
+`/r/AskReddit/top` 200 38,012B、log 無解析器錯誤。
+
+⚠ 踩過的坑（2026-10-21，run `39550258322`）：**`smoke` job 一定要有 `actions/checkout`** —— 腳本在 repo 裡，
+漏掉就 `bash: .github/scripts/smoke_test.sh: No such file or directory`（exit 127），而且 `mirror-codeberg`
+會跟著 `skipped`，整條發佈看似失敗其實只是少一步 checkout。
 
 ## 11. musl 退場為產品線，只留作備援路的實作細節（2026-10-21 決策）
 

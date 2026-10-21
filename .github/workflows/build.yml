@@ -104,7 +104,10 @@ jobs:
     needs: manifest
     runs-on: ubuntu-latest
     steps:
-      - name: Set up qemu binfmt (for the arm64 exec check)
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up qemu binfmt (for the best-effort arm64 exec check)
         uses: docker/setup-qemu-action@v3
 
       - name: Login to ghcr.io

@@ -223,8 +223,8 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
   約 13MB），因此 tag 與 digest 兩邊一致。該 job 需要 GitHub 端的 `CODEBERG_PAT` secret（`write:packages`），
   **沒設就會明確失敗**（不會靜默略過）。細節：`design/github-actions-workflow.md` §9。
 - **發佈前有 `smoke` job**（`needs: manifest`）：把剛推出的 `:amd64` 鏡像在乾淨 runner 上跑起來，打 `/`、
-  `/r/gaming`、`/r/AskReddit/top`，檢查狀態碼與 body 大小並掃 log 找解析器錯誤 —— 專抓「靜態 binary 在
-  `scratch` 內無法做 DNS」與「bake 的 PR 在執行期壞掉」這兩類只有上線才會發現的問題；`mirror-codeberg`
+  `/r/gaming`、`/r/AskReddit/top`，先確認鏡像內的 binary 全靜態、架構正確，再起容器打這三個 route、檢查狀態碼與 body 大小、掃 log 找解析器錯誤 ——
+  專抓「靜態 binary 在 `scratch` 內無法做 DNS」與「bake 的 PR 在執行期壞掉」這兩類只有上線才會發現的問題；`mirror-codeberg`
   `needs: smoke`，沒通過就不會鏡像。細節：`design/github-actions-workflow.md` §10。
 - ⚠ 如果你**手動**跑 Forgejo 那條備援建置，它會把 codeberg 的 tag 換成它自己的產物（digest 與 ghcr 不同），
   直到下一次 GitHub 建置把鏡像蓋回來。

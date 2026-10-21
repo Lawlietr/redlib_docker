@@ -239,8 +239,8 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
   That job needs the `CODEBERG_PAT` GitHub secret (`write:packages`) and **fails loudly when it is missing**
   rather than skipping. Details: `design/github-actions-workflow.md` §9.
 - **A `smoke` job gates the publish** (`needs: manifest`): it starts the freshly pushed `:amd64` image on a clean
-  runner and hits `/`, `/r/gaming` and `/r/AskReddit/top`, checking status codes and body sizes and grepping the log
-  for resolver errors. It targets the two failure classes that used to surface only on a live instance: a static binary
+  runner and hits `/`, `/r/gaming` and `/r/AskReddit/top`, first requiring the shipped binaries to be fully static and
+  arch-correct, then checking status codes and body sizes and grepping the log for resolver errors. It targets the two failure classes that used to surface only on a live instance: a static binary
   that cannot resolve DNS inside `scratch`, and a baked upstream PR that breaks at runtime. `mirror-codeberg` has
   `needs: smoke`, so a failing image is never mirrored. Details: `design/github-actions-workflow.md` §10.
 - ⚠ A **manual** Forgejo fallback build repoints the Codeberg tags at its own binaries until the next GitHub
