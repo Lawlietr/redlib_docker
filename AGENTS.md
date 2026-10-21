@@ -15,8 +15,16 @@ this repo only owns the bake chain, CI, Docker config and docs. Say so in user-f
 | Item | Location |
 |------|----------|
 | This repo (Docker config, CI, docs) | https://codeberg.org/Lawlietr/redlib_docker (primary; also mirrored to `github.com/Lawlietr/redlib_docker` as the GitHub Actions build entry point) |
-| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; mirror `ghcr.io/lawlietr/redlib` — also multi-arch + `<git-sha>` since 2026-10-21 (built on native amd64/arm64 hosted runners), glibc-static instead of musl |
+| Container images | **primary: `ghcr.io/lawlietr/redlib`** — multi-arch + `<git-sha>`, built by GitHub Actions on native amd64/arm64 hosted runners (glibc-static). **fallback: `codeberg.org/lawlietr/redlib`** — same tag scheme, musl-static, refreshed **only by a manual** `.forgejo/workflows/build.yml` run, so its tags lag on purpose. Both namespaces are lowercase (registry requirement) |
 | Visibility | both remotes and both registries are **public** since 2026-10-21 (the ghcr package used to inherit the private repo, which made anonymous pulls look like "the image does not exist"). Consequence: **git history is public** — never commit `CODEBERG_PAT`, registration `uuid`/`token`, `ghp_…`/`gho_…` tokens or keys; CI reads them only through `${{ secrets.* }}`. |
+
+**Publishing policy (2026-10-21).** Future images are compiled and published by **GitHub Actions**
+(`.github/workflows/build.yml` → `ghcr.io/lawlietr/redlib`). The Forgejo runner workflow is **kept, not
+deleted** — its `push` trigger was removed so it now runs only via `workflow_dispatch`; use it as the
+fallback when GitHub is unavailable, as the only musl-static producer, or to resync the
+`codeberg.org/lawlietr/redlib` tags. Local `docker build` + running the container is an explicitly
+supported way to test changes (host architecture only; see the smoke checks under Build Commands). Never
+publish from a local machine — publishing happens in CI only.
 
 This repository's own configuration files and scripts are licensed under the MIT License (see `LICENSE`). The bundled Redlib source (built at Docker build time) retains its own upstream license (AGPL-3.0).
 
@@ -32,30 +40,42 @@ This repository's own configuration files and scripts are licensed under the MIT
 ## Build Commands
 
 ```bash
-docker build -t redlib .                          # local build
+docker build -t redlib .                          # local build (host arch only)
 # docker build --build-arg REDLIB_BRANCH=dev -t redlib .  # specific branch
 docker run -p 8080:8080 -d --name redlib redlib  # run
 
 # Compose has two image sources (same service, switched by REDLIB_IMAGE):
 docker compose up -d --build                      # B) local build (PR bake included)
+REDLIB_IMAGE=ghcr.io/lawlietr/redlib:latest \
+  docker compose up -d --pull always --no-build   # A) run the CI image (primary registry, no build)
 REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest \
-  docker compose up -d --pull always --no-build   # A) run the CI image (no build)
+  docker compose up -d --pull always --no-build   # A2) fallback registry (manual runs only)
 # NOTE: with a `build:` key present, a plain `up -d` uses the locally built image and
-# never pulls the registry one -> always pass --no-build for mode A.
+# never pulls the registry one -> always pass --no-build for mode A/A2.
+
+# Local smoke test after any change (full list: design/upstream-pr-bake.md §7):
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:8080/r/<sub>/comments/<id>/<title>/"   # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:8080/r/__no_such_sub__/comments/<id>/x/"  # negative control: 404/400
+docker logs redlib 2>&1 | grep -ci panic          # expect 0
 ```
+
+> **Local build limits**: it builds the **host architecture** only, and this dev box has no qemu binfmt
+> (`tonistiigi/binfmt --install arm64` does not work here), so `--platform linux/arm64` fails with
+> `exec format error`. Arm64 runtime checks need real arm64 hardware. Local builds publish nothing.
 
 Test build: `docker build --target builder -t redlib-test .` then
 `docker run --rm --entrypoint /redlib redlib-test --help`.
 
 ## CI/CD
 
-### Forgejo Actions (primary)
+### Forgejo Actions (kept as a manual-only fallback)
 
-`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit).
+`.forgejo/workflows/build.yml` — runs on the self-hosted runner (label `redlib`, Ubox-02 192.168.1.12; docker via mounted socket + BuildKit). **Since 2026-10-21 the `push` trigger is removed: it only runs through `workflow_dispatch`** (optional `reason` input). Keep it: it is the fallback when GitHub Actions is down and the only producer of musl-static binaries; the runner infrastructure and its docs stay current.
 
 **Workflow principle: compile on the 12 runner, then push.** Multi-arch binaries are cross-compiled natively on the runner (no QEMU), each packed into `scratch` via `Dockerfile.pack`, pushed per-platform, then merged into a multi-platform manifest list and pushed to the registry.
 
-- **Trigger**: Changes to `Dockerfile`, `Dockerfile.pack`, `redlib-prs.txt`, `.build/**`, or `.forgejo/scripts/build_and_push.sh`; or manual dispatch (`workflow_dispatch`) from the local Forgejo UI
+- **Trigger**: `workflow_dispatch` only (manual, from the local Forgejo UI). Re-add the `push` path filter only if the Codeberg registry is meant to lead again.
 - **Platform**: `linux/amd64`, `linux/arm64` (musl static, native cross-compile)
 - **Compile host**: the runner container `forgejo-runner` on Ubox-02 (192.168.1.12). Based on `rust:1.98-slim-trixie` (Debian 13) with musl-cross-make aarch64-musl toolchain, clang, cmake, docker CLI, buildx, and compose plugins; see `design/multi-arch-build.md` §5.
   > **工具鏈安裝與驗證全在 12 runner 執行。本地不裝任何工具鏈、不碰本地 Forgejo。**
@@ -64,10 +84,10 @@ Test build: `docker build --target builder -t redlib-test .` then
 - Gotchas: `build_and_push.sh` sets `CXX_*`/`AR_*`/`CC_*`/`BINDGEN_EXTRA_CLANG_ARGS` for the arm target — without them boring-sys2's C++ source compiles with the host `g++` and the arm linker fails with "file in wrong format (EM: 62)"; bindgen needs glibc multiarch headers on Debian trixie. Details: `design/multi-arch-build.md`, `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`
 
 
-### GitHub Actions Workflow (amd64 + arm64 compile + ghcr mirror)
+### GitHub Actions Workflow (primary publish path — amd64 + arm64 → ghcr)
 
 `.github/workflows/build.yml` is guarded with `if: ${{ github.server_url == 'https://github.com' }}` so it only runs when the repo is hosted on GitHub (it does — see Repository Remotes):
-- **Trigger**: push to `main` touching `Dockerfile`, `redlib-prs.txt`, `.build/**`, `.github/**`; or `workflow_dispatch`
+- **Trigger**: push to `main` touching `Dockerfile`, `redlib-prs.txt`, `.build/**`, `.github/**`; or `workflow_dispatch`. Runs are serialized by `concurrency: ghcr-publish` so the manifest merge can never pair an old `:amd64` with a new `:arm64`.
 - **Compile**: a 2-entry matrix — amd64 on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm` (standard GitHub-hosted arm64 runner, free for public repositories since 2025-08-07). Each job runs `docker build -f Dockerfile` natively on its own architecture (no QEMU, no cross toolchain) → same source tree as the local build (main + `redlib-prs.txt`)
 - **Registry**: `.github/scripts/build_and_push.sh` pushes `ghcr.io/{owner}/redlib:amd64` and `:arm64`; then `.github/scripts/merge_manifest.sh` merges them into `:latest` and `:<git-sha>` manifest lists with `docker buildx imagetools create` (login uses `GITHUB_TOKEN`; the short sha is derived exactly like the `.forgejo/` script so both registries carry the same tag strings)
 - **Binaries differ from the `.forgejo/` path on purpose**: ghcr publishes glibc + `+crt-static` binaries, Codeberg publishes musl-static ones. Same `scratch` runtime, different files — never compare digests across registries.

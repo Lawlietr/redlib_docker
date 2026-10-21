@@ -1,14 +1,18 @@
 # GitHub Actions Workflow — ghcr.io 建置流程
 
-> **狀態：已上線（2026-10-07）；repo 與 ghcr package 自 2026-10-21 起公開；同日補上 arm64 與 `<git-sha>` tag。** GitHub 遠端 `github.com/Lawlietr/redlib_docker` 已建立，
+> **狀態：已上線（2026-10-07）；repo 與 ghcr package 自 2026-10-21 起公開；同日補上 arm64 與 `<git-sha>` tag，
+> 並從同日成為主要發佈路徑。** GitHub 遠端 `github.com/Lawlietr/redlib_docker` 已建立，
 > `git remote add github ...` 已設好，`.github/workflows/build.yml` 由 push 到 `main` 自動觸發，
 > 走兩個 build job（amd64 跑 `ubuntu-latest`、arm64 跑 `ubuntu-24.04-arm`）+ 一個 manifest job，
-> 推 `ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`（四個 tag、雨架構）。
-> 本地 Forgejo（`.forgejo/`，多架構 musl）仍是主要發佈路徑；兩條路徑的**來源內容必須一致**
-> （都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
+> 推 `ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`（四個 tag、兩架構）。
+> 本地 Forgejo（`.forgejo/`，多架構 musl）**保留但只手動觸發**（2026-10-21 移除 `push` trigger）：
+> 作為 GitHub Actions 不可用時的 fallback，也是 musl 靜態產物的唯一來源；`codeberg.org/lawlietr/redlib`
+> 的 tag 因此會刻意落後。兩條路徑的**來源內容必須一致**（都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
+> 本地 `docker build` + 起容器也是支援的測試途徑（只產本機架構；命令與 smoke 清單見 README 的「本地編譯與測試」節）。
+> 作業層級以 `concurrency: ghcr-publish` 串行，避免 manifest merge 混到不同 commit 的兩個架構。
 
 ## 1. 檔案位置
-- Workflow：`.github/workflows/build.yml`（GitHub Actions 標準路徑；matrix 雨個 build job + 一個 manifest job）。
+- Workflow：`.github/workflows/build.yml`（GitHub Actions 標準路徑；matrix 兩個 build job + 一個 manifest job）。
 - 建構 / 推送腳本：`.github/scripts/build_and_push.sh`（吃 `ARCH`：`docker build -f Dockerfile --platform linux/$ARCH` → `docker push :$ARCH`）
   與 `.github/scripts/merge_manifest.sh`（`docker buildx imagetools create` 合併出 `:latest` 與 `:<git-sha>`）。
 - 與 codeberg 版 `.forgejo/workflows/build.yml` 並存，各自推到各自的登錄區。
@@ -63,8 +67,8 @@ permissions:
   - `:latest` / `:<git-sha>` —— `.github/scripts/merge_manifest.sh` 用 `docker buildx imagetools create`
     合併出的**多平台 manifest list**（`imagetools` 是純 registry 側操作、不執行目標代碼，所以合併 job
     跑在 amd64 runner 就够）。git sha 用 `git rev-parse --short HEAD`，**與 `.forgejo/scripts/build_and_push.sh`
-    同一算法** → 同一 commit 在雨個 registry 上的 tag 字串一致，使用者换 registry 不用改 tag 惯例。
-    （2026-10-21 之前 ghcr 只推 `latest`，那是雨邊不一致的地方，已補齊。）
+    同一算法** → 同一 commit 在兩個 registry 上的 tag 字串一致，使用者换 registry 不用改 tag 惯例。
+    （2026-10-21 之前 ghcr 只推 `latest`，那是兩邊不一致的地方，已補齊。）
   - ⚠ **owner 必須小寫**：`GITHUB_REPOSITORY_OWNER` 是 `Lawlietr`，但 registry repository name 只能小寫，
     `docker build -t ghcr.io/Lawlietr/redlib:latest` 會直接 `invalid tag … repository name must be lowercase`。
     兩支脚本都以 `${GITHUB_REPOSITORY_OWNER,,}` 強制小寫 → 實際推送 `ghcr.io/lawlietr/redlib/...`（與 codeberg 的 namespace 同形）。
@@ -72,12 +76,12 @@ permissions:
   - namespace 由 `$GITHUB_REPOSITORY_OWNER` 推導，**fork 不改任何檔案**就會推到自己的 namespace。
 - codeberg 版推 `codeberg.org/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`。
 
-## 5. 架構：雨邊都是雙架構，但編法不同
+## 5. 架構：兩邊都是雙架構，但編法不同
 - **GitHub 端**：`docker build -f Dockerfile --platform linux/<arch>`，在**對應架構的 runner 上原生 build**
   （amd64 → `ubuntu-latest`；arm64 → `ubuntu-24.04-arm`），產出 **x86_64 / aarch64 全靜態 glibc binary**
   （`+crt-static`）。不用 QEMU、不用交叉工具鏈。
 - **Codeberg / 本地 Forgejo 端**：musl 原生交叉編譯 + `Dockerfile.pack`（見 `design/multi-arch-build.md`）。
-- ⚠ 雨條路的 **binary 是不同產物**（musl 靜態 vs glibc 靜態），同一 commit 的 **digest 不會相同**；
+- ⚠ 兩條路的 **binary 是不同產物**（musl 靜態 vs glibc 靜態），同一 commit 的 **digest 不會相同**；
   跨 registry 比對時比 tag 與行為，不比 digest。
 
 ### arm64 的三條路（2026-10-21 選第 3 條，已上線）
@@ -105,14 +109,14 @@ permissions:
 0. 注意：**新 repo 的首次 push 不會觸發 workflow**（GitHub 行為），要手動 `gh workflow run` 跑一次；之後 push 正常觸發。
 1. `gh run list --repo Lawlietr/redlib_docker --limit 3` → 最新 run 是否 success。
 2. `gh run view <id> --log` 裡應出現 5 行 `Merging PR #<n> -> <sha>`、無 `warning: PR ... head moved`。
-3. 匿名 `docker manifest inspect ghcr.io/lawlietr/redlib:latest`（及 `:<git-sha>`）→ **應看到雨個 entries**
+3. 匿名 `docker manifest inspect ghcr.io/lawlietr/redlib:latest`（及 `:<git-sha>`）→ **應看到兩個 entries**
    （`linux/amd64` + `linux/arm64`）；只有 1 個 entries 就是某個 matrix job 沒成功（看是哪一個 arch 分支）。
 4. 功能驗證清單見 `design/upstream-pr-bake.md` §7。
 
 ## 8. 與 codeberg 版的差異總覽
 | 項目 | GitHub (`.github/`) | Codeberg / 本地 Forgejo (`.forgejo/`) |
 |------|---------------------|----------------------------------------|
-| runner | GitHub 託管 `ubuntu-latest` + `ubuntu-24.04-arm`（雨個 job，各自原生） | 本機自架 `redlib`（Ubox-02 / 192.168.1.12） |
+| runner | GitHub 託管 `ubuntu-latest` + `ubuntu-24.04-arm`（兩個 job，各自原生） | 本機自架 `redlib`（Ubox-02 / 192.168.1.12） |
 | 編譯方式 | `docker build -f Dockerfile`（glibc 靜態，host 原生） | `cargo` musl 交叉編譯 + `Dockerfile.pack`（見 multi-arch-build.md） |
 | 架構 | **amd64 + arm64**（manifest list，2026-10-21 起） | amd64 + arm64（manifest list） |
 | 登錄區 | `ghcr.io/{owner}/redlib:latest` | `codeberg.org/lawlietr/redlib:{latest,<sha>,amd64,arm64}` |

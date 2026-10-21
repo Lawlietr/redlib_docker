@@ -2,6 +2,13 @@ name: Build container images (GitHub)
 
 # Build + push the static redlib image to GitHub Container Registry (ghcr.io).
 #
+# STATUS (2026-10-21): this is the PRIMARY publish path. It publishes dual-arch
+# (amd64 + arm64) images as :latest and :<git-sha>, plus per-platform tags.
+# The Codeberg/Forgejo pipeline (.forgejo/workflows/build.yml) is kept as a
+# manual-only fallback (musl-static producer + backup when GitHub is unavailable).
+# Local builds (docker build -t redlib .) are supported for testing - see README
+# section "本地編譯與測試".
+#
 # This workflow is guarded so it only runs when the repo is hosted on
 # github.com. When the same file is read by the local Forgejo instance or by
 # Codeberg, the `if` guard below keeps the job from executing — those
@@ -17,6 +24,13 @@ on:
       - ".build/**"
       - ".github/**"
   workflow_dispatch:
+
+# Secondary builds must not interleave with the publish path: the manifest merge
+# reads :amd64 and :arm64 from the registry, so two concurrent runs could merge a
+# mixed pair (old amd64 + new arm64).
+concurrency:
+  group: ghcr-publish
+  cancel-in-progress: false
 
 # Pushing to ghcr.io requires write access to packages (and repository contents
 # for the checkout). GITHUB_TOKEN creates the ghcr package on first push.

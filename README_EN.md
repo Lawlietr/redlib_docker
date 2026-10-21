@@ -18,12 +18,12 @@ A lightweight Reddit alternative, deployed via Docker.
 >
 > | Item | Location |
 > |------|----------|
-> | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** |
-> | Prebuilt container images | `codeberg.org/lawlietr/redlib` (multi-platform `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`) |
-> | GitHub mirror (also a build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib` (**amd64 + arm64**, `latest` + `<git-sha>`; repo and package are public, so it pulls anonymously) |
+> | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** (mirrored at https://github.com/Lawlietr/redlib_docker) |
+> | **Prebuilt container images (primary, since 2026-10-21)** | **`ghcr.io/lawlietr/redlib`** — built automatically by **GitHub Actions**, dual-arch `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`; public, **pulls anonymously** |
+> | Fallback images | `codeberg.org/lawlietr/redlib` (musl-static builds; **updated only by a manual run** of `.forgejo/workflows/build.yml`, so its tags deliberately lag the primary path) |
 >
-> The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while the image path is
-> lowercase `lawlietr/redlib` (the Codeberg registry requires lowercase).
+> The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while image paths are
+> lowercase (`lawlietr/redlib`) — required by the ghcr registry, and the Codeberg namespace is lowercase too.
 
 - The build clones upstream `main` (https://github.com/redlib-org/redlib) and then bakes the upstream PRs that are **still not merged upstream**:
   the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539/#592 → CMAF video + `rich:video`,
@@ -33,22 +33,29 @@ A lightweight Reddit alternative, deployed via Docker.
   applied by `.build/apply_redlib_prs.sh`. Evidence, review tiers and the re-review procedure: `design/upstream-pr-bake.md`.
   (#509 hyper-tls is superseded by the wreq migration on `main` (#544) and is not baked.)
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
-- CI automatically builds and pushes prebuilt images to **`codeberg.org/lawlietr/redlib`**,
-  supporting both **`linux/amd64`** and **`linux/arm64`** platforms.
+- **From 2026-10-21 all images are compiled by GitHub Actions and pushed to the primary registry
+  `ghcr.io/lawlietr/redlib`** (dual-platform `linux/amd64` + `linux/arm64`). The local Forgejo runner
+  pipeline is **kept but no longer triggers on push** (manual-only fallback and the musl-static producer);
+  local `docker build` is supported as well, for testing changes and offline debugging.
 
 ## Deployment
 
 ### 1. Docker (pull the prebuilt image, recommended)
 
 ```bash
-# If the image is private, log in first: docker login codeberg.org
-docker pull codeberg.org/lawlietr/redlib:latest
+# Primary registry (ghcr is public: no docker login needed)
+docker pull ghcr.io/lawlietr/redlib:latest
 
 docker run -d \
   --name redlib \
   -p 8080:8080 \
   --restart unless-stopped \
-  codeberg.org/lawlietr/redlib:latest
+  ghcr.io/lawlietr/redlib:latest
+
+# Pin a build with the <git-sha> tag instead:
+#   docker pull ghcr.io/lawlietr/redlib:d572b2e
+# Fallback registry (only updated by a manual workflow run; musl-static builds):
+#   docker pull codeberg.org/lawlietr/redlib:latest
 ```
 
 After startup it is accessible at `http://localhost:8080`.
@@ -59,7 +66,7 @@ After startup it is accessible at `http://localhost:8080`.
 # docker-compose.yml
 services:
   redlib:
-    image: codeberg.org/lawlietr/redlib:latest
+    image: ghcr.io/lawlietr/redlib:latest
     container_name: redlib
     ports:
       - "8080:8080"
@@ -90,7 +97,10 @@ docker compose up -d
 > The `docker-compose.yaml` in this repo supports both image sources (same service, switched with `REDLIB_IMAGE`):
 >
 > ```bash
-> # A) run the CI-built image (recommended; equivalent to the `image:` snippet above)
+> # A) run the CI-built image (primary path: GitHub Actions -> ghcr)
+> REDLIB_IMAGE=ghcr.io/lawlietr/redlib:latest docker compose up -d --pull always --no-build
+>
+> # A2) fallback registry (only refreshed when .forgejo/workflows/build.yml is run manually)
 > REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest docker compose up -d --pull always --no-build
 >
 > # B) build locally from source (this repo as the context for the root `Dockerfile`, bake included)
@@ -149,10 +159,10 @@ Full list: https://github.com/redlib-org/redlib/blob/main/.env.example
 
 **Both registries are now dual-architecture** (`linux/amd64` + `linux/arm64`) and use the **same tag scheme**:
 
-| Registry | `latest` | `<git-sha>` | per-arch tags |
-|---|---|---|---|
-| `codeberg.org/lawlietr/redlib` (primary, musl static) | manifest list | manifest list | `amd64` / `arm64` |
-| `ghcr.io/lawlietr/redlib` (mirror, glibc static) | manifest list | manifest list (since 2026-10-21) | `amd64` / `arm64` |
+| Registry | Role | `latest` | `<git-sha>` | per-arch tags |
+|---|---|---|---|---|
+| `ghcr.io/lawlietr/redlib` | **primary** (GitHub Actions, runs on push; glibc-static builds) | manifest list | manifest list | `amd64` / `arm64` |
+| `codeberg.org/lawlietr/redlib` | **fallback** (musl-static builds; **manual runs only**, tags lag on purpose) | manifest list | manifest list | `amd64` / `arm64` |
 
 | Tag | Description |
 |-----|-------------|
@@ -202,18 +212,59 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
 
 ## CI/CD
 
-- Trigger: changes to `Dockerfile`, `Dockerfile.pack`, `redlib-prs.txt`, `.build/**`, `.forgejo/scripts/build_and_push.sh`, or a manual "Run workflow".
-- Execution: a locally self-hosted Forgejo Runner (`redlib` label) cross-compiles musl for amd64/arm64 natively (no QEMU), with BuildKit + cargo cache mount (incremental builds).
-- Push target: `codeberg.org/lawlietr/redlib`. Each build produces two multi-platform
-  manifest lists — `latest` (rolling) and `<git-sha>` (reproducible pin) — both containing
-  `linux/amd64` and `linux/arm64`.
-- GitHub Actions (`.github/workflows/build.yml`): a matrix of two build jobs plus one manifest job.
-  amd64 runs on `ubuntu-latest`, arm64 on `ubuntu-24.04-arm` (a standard arm64 hosted runner, free for
-  public repositories), both compiling **this same `Dockerfile`** and the same PR bake natively; each
-  pushes `:amd64` / `:arm64`, then `.github/scripts/merge_manifest.sh` merges them with
-  `docker buildx imagetools create` into `ghcr.io/lawlietr/redlib:{latest,<git-sha>}` (multi-platform
-  manifest lists). Details: `design/github-actions-workflow.md`.
-- Details and troubleshooting: `design/forgejo-runner-workflow.md`, `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
+**Primary path (since 2026-10-21): GitHub Actions.**
+
+- GitHub Actions (`.github/workflows/build.yml`): runs automatically on **push to `main` touching
+  `Dockerfile`, `redlib-prs.txt`, `.build/**` or `.github/**`** (or a manual "Run workflow").
+  A matrix of two build jobs plus one manifest job: amd64 on `ubuntu-latest`, arm64 on
+  `ubuntu-24.04-arm` (a standard arm64 hosted runner, free for public repositories), both compiling
+  **this same `Dockerfile`** and the same PR bake natively; each pushes `:amd64` / `:arm64`, then
+  `.github/scripts/merge_manifest.sh` merges them with `docker buildx imagetools create` into
+  `ghcr.io/lawlietr/redlib:{latest,<git-sha>}` (multi-platform manifest lists). A `concurrency` group
+  serialises runs so the merge can never pair an old amd64 with a new arm64.
+  Details: `design/github-actions-workflow.md`.
+- **Kept, but no longer automatic: the local Forgejo runner** (`.forgejo/workflows/build.yml`, the
+  `redlib` label on the 12 host). Since 2026-10-21 its `push` trigger is removed and only
+  `workflow_dispatch` remains (with an optional reason input). Use it as a fallback when GitHub Actions
+  is unavailable, as the only producer of musl-static binaries, or to resync the
+  `codeberg.org/lawlietr/redlib` tags. The runner infrastructure and disk discipline (30GB host,
+  `disk_guard.sh` + prune) are fully preserved: `design/forgejo-runner-workflow.md`,
+  `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
+- ⚠ **`codeberg.org/lawlietr/redlib` tags will now lag behind** (no automatic rebuild). Run that workflow
+  by hand to resync, or switch to ghcr. The two registries ship different builds (musl vs glibc static):
+  **never compare digests** across them.
+- How to verify each step: `design/error-triage-playbook.md`; per-feature regression list:
+  `design/upstream-pr-bake.md` §7.
+
+## Local build and testing (recommended around any change)
+
+CI is not the only entry point: building locally and running the container is an **explicitly
+supported** workflow (and the only way to test a change before it reaches either registry):
+
+```bash
+# 1) build (produces the host architecture only; includes the redlib-prs.txt PR bake)
+docker build -t redlib-local .
+#    different upstream branch/commit: --build-arg REDLIB_BRANCH=<branch|tag|sha>
+
+# 2) run it (listens on 8080; use another host port if that one is taken)
+docker run -d --name redlib-local -p 8090:8080 redlib-local
+
+# 3) four quick smoke checks (full checklist: design/upstream-pr-bake.md §7)
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8090/r/SteamdeckGames/comments/1xautuo/horizon_forbidden_west_should_not_be_steam_deck/'
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8090/r/__definitely_no_such_sub__/comments/1xautuo/x/'   # negative control: expect 404/400, never 200
+docker logs redlib-local 2>&1 | grep -ci panic   # expect 0
+```
+
+Worth knowing:
+- **It builds the host architecture only.** On x86_64 you do not get arm64; this host also has no qemu
+  binfmt, so `--platform linux/arm64` fails with `exec format error` — arm64 runtime verification needs
+  real arm64 hardware (see `TODO.md`).
+- **Do not judge a change by curling the Reddit API directly** — that gives false negatives. Compare two
+  images of the same code with/without the candidate change, end to end; method in
+  `design/error-triage-playbook.md`.
+- A local build **publishes nothing**: it never touches either registry. Publishing only happens in CI
+  (or through a manual `.forgejo/` run).
 
 ## Troubleshooting
 

@@ -1,15 +1,22 @@
 name: Build container images (Codeberg)
 
+# STATUS (2026-10-21): GitHub Actions is now the PRIMARY publish path
+# (.github/workflows/build.yml -> ghcr.io/lawlietr/redlib, dual-arch + <git-sha>).
+# This workflow is deliberately KEPT but no longer triggers on push - run it manually
+# when you need it:
+#   * fallback when GitHub Actions is down / quota-blocked;
+#   * the only producer of musl-static binaries (the GitHub path builds glibc-static);
+#   * rebuilding the codeberg.org/lawlietr/redlib tags, which now lag behind on purpose.
+# The 12-host runner infrastructure stays documented in design/forgejo-runner-*.md.
+# Details: design/github-actions-workflow.md (primary path), design/multi-arch-build.md.
+
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - "Dockerfile"
-      - "Dockerfile.pack"
-      - "redlib-prs.txt"
-      - ".build/**"
-      - ".forgejo/scripts/build_and_push.sh"
   workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this manual rebuild (fallback / musl build / codeberg resync)"
+        required: false
+        default: "manual resync of codeberg.org tags"
 
 jobs:
   build:

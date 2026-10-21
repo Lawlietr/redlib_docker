@@ -68,6 +68,17 @@ arm64 instances and in a local container from the same image, so this is not a
 regression from this release; it just means baking that upstream PR does not
 actually restore share links.
 
+**Primary image location changed (2026-10-21).** Images are now built and published by **GitHub
+Actions** into `ghcr.io/lawlietr/redlib` (dual-arch, `latest` + `<git-sha>`, public/anonymous pull).
+`codeberg.org/lawlietr/redlib` is kept as a **fallback**: its workflow still exists but no longer
+triggers on push, so those tags are refreshed only when that workflow is dispatched by hand and will
+otherwise lag behind. If you currently pull from `codeberg.org/lawlietr/redlib`, nothing breaks — but
+new builds land on ghcr first, and a `docker pull` from the fallback registry will not see them until
+someone runs the manual workflow.
+
+Local builds are explicitly supported for testing (`docker build -t redlib .`, then run the container
+and the smoke checks in `design/upstream-pr-bake.md` §7); a local build never publishes anything.
+
 **How to pull / pin.** Tags carrying this change:
 `codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (multi-arch, amd64 + arm64).
 The GitHub-side mirror **is now multi-arch too and is also pinnable**: as of 2026-10-21 it publishes

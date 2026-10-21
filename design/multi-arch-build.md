@@ -168,6 +168,10 @@ docker buildx imagetools create \
 4. **per-platform tag**：`docker pull …:amd64` 等確認解析到單檔。
 
 ## 10. 風險 / 待辦
+- **2026-10-21：本檔描述的 `.forgejo/` 路徑改為「只手動觸發」**（保留 runner 與腳本，不刪）。
+  主要發佈路徑改由 GitHub Actions 承擔（原生 arm64 hosted runner，四 tag 對齊）；見
+  `design/github-actions-workflow.md`。本檔的 musl 交叉編譯設定仍是**手動 fallback 時的操作依據**，未失效。
+
 - [x] **runner 工具鏈（script 層）**：`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
 - [ ] **擴建 runner Dockerfile 安裝工具鏈**（`apk add` cross-compiler + rustup + clang）
   → 重建 runner 容器 → 驗證 daemon 能起 + 能原生交叉編譯兩 target —— P0 上線前最後一步 infra。
@@ -177,7 +181,7 @@ docker buildx imagetools create \
 - [x] **GitHub Actions（`.github/workflows/build.yml`，ghcr.io 備援）已同步兩架構**（2026-10-21）：
       不再「暫緩」。改走**原生 arm64 hosted runner**（`ubuntu-24.04-arm`，public repo 免費 GA），
       不用 QEMU、不用交叉工具鏈；四個 tag 與 codeberg 版對齊（`latest`/`<git-sha>`/`amd64`/`arm64`）。
-      ⚠ 这条路產的是 **glibc 靜態** binary（本檔的 Dockerfile 的 `+crt-static`），不是本檔描述的 musl 產物；
+      ⚠ 這條路產的是 **glibc 靜態** binary（本檔的 Dockerfile 的 `+crt-static`），不是本檔描述的 musl 產物；
       見 `design/github-actions-workflow.md` §4/§5。
 
 ## 11. 與 upstream 差異

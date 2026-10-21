@@ -1,5 +1,11 @@
 # Workflow 調整 — 登錄區網址、runs-on、建構工具
 
+> **2026-10-21 政策變更：這條路不再是主要發佈路徑，但 workflow 與 runner 完整保留。**
+> `.forgejo/workflows/build.yml` 的 `push` trigger 已移除，現在**只有 `workflow_dispatch`**（可填 reason）。
+> 保留理由：(1) GitHub Actions 不可用時的 fallback；(2) musl 靜態產物的唯一來源；(3) 需要時把
+> `codeberg.org/lawlietr/redlib` 的 tag 追平（否則該登錄區的 tag 會落後，這是刻意設計）。
+> 主要發佈路徑與 ghcr 細節：`design/github-actions-workflow.md`。
+>
 > **2026-09-18 已改完並上線**：`CODEBERG_PAT`（repo-level）已設、首次完整 build+push 成功，
 > `codeberg.org/lawlietr/redlib:latest` 已公開可 pull。以下四點為當時的修正記錄。
 

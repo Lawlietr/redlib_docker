@@ -1,11 +1,18 @@
 # Image source — pick ONE. Walkthrough: README.md §部署方式 / README_EN.md §Deployment.
 #
-#   A) run the CI-built multi-arch image (recommended, matches the README example):
+#   A) run the CI-built multi-arch image (PRIMARY path since 2026-10-21, GitHub Actions):
+#        REDLIB_IMAGE=ghcr.io/lawlietr/redlib:latest \
+#          docker compose up -d --pull always --no-build
+#        # pin a build instead: REDLIB_IMAGE=ghcr.io/lawlietr/redlib:<git-sha>
+#
+#   A2) fallback registry (kept in sync only by a MANUAL Forgejo workflow run now;
+#       its binaries are musl-static, the GitHub ones are glibc-static — do not
+#       expect identical digests):
 #        REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest \
 #          docker compose up -d --pull always --no-build
 #
 #   B) build locally from this repo (root Dockerfile; includes the upstream PR bake
-#      listed in redlib-prs.txt):
+#      listed in redlib-prs.txt) — supported and useful for testing changes:
 #        docker compose up -d --build
 #
 # Why the switch exists: while a `build:` key is present, a plain `docker compose up -d`
@@ -18,7 +25,8 @@ services:
       context: .
       dockerfile: Dockerfile
     # Default = the locally built tag. Set REDLIB_IMAGE to a registry reference
-    # (codeberg.org/lawlietr/redlib:latest, or a <git-sha> pin for reproducibility)
+    # (primary: ghcr.io/lawlietr/redlib:latest, or a <git-sha> pin for reproducibility;
+    # fallback: codeberg.org/lawlietr/redlib:latest, updated only by a manual workflow run)
     # to run the CI image instead of building.
     image: ${REDLIB_IMAGE:-redlib}
     container_name: redlib

@@ -16,11 +16,11 @@
 >
 > | 項目 | 位置 |
 > |------|------|
-> | 本 repo（Docker 設定、CI、文件） | **https://codeberg.org/Lawlietr/redlib_docker** |
-> | 預編譯 container 映像 | `codeberg.org/lawlietr/redlib`（多平台 `linux/amd64` + `linux/arm64`；tag `latest` 與可 pin 的 `<git-sha>`） |
-> | GitHub 鏡像（只是 GitHub Actions 的編譯入口） | https://github.com/Lawlietr/redlib_docker → 映像 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**、**只有 `latest`**；repo 與 package 公開，**匿名可拉**） |
+> | 本 repo（Docker 設定、CI、文件） | **https://codeberg.org/Lawlietr/redlib_docker**（另有 GitHub 鏡像 https://github.com/Lawlietr/redlib_docker） |
+> | **預編譯 container 映像（主，2026-10-21 起）** | **`ghcr.io/lawlietr/redlib`** — 由 **GitHub Actions** 自動建置，雙架構 `linux/amd64` + `linux/arm64`；tag `latest` 與可 pin 的 `<git-sha>`；公開，**匿名可拉** |
+> | 備援映像 | `codeberg.org/lawlietr/redlib`（musl 靜態產物；**現在只能手動觸發** `.forgejo/workflows/build.yml` 才會更新，tag 會刻意落後於主路徑） |
 >
-> 兩者名稱不同：repo 是 `Lawlietr/redlib_docker`，registry 映像路徑是**小寫** `lawlietr/redlib`（Codeberg registry 要求小寫）。
+> 名稱差異要注意：repo 是 `Lawlietr/redlib_docker`（Codeberg 上大小寫自如顯示），registry 映像路徑是**小寫** `lawlietr/redlib`（registry 要求小寫，兩個登錄區都如此）。
 
 - 建置時 clone upstream `main`（https://github.com/redlib-org/redlib），再把 **仍未合併進 upstream 的上游 PR** bake 進去：
   清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539/#592 → CMAF 影片與 `rich:video`、
@@ -29,22 +29,28 @@
   由 `.build/apply_redlib_prs.sh` 套用。判斷依據、分級與重新評估程序：`design/upstream-pr-bake.md`。
   （#509 hyper-tls 已被 main 的 wreq 遷移 #544 取代，不 bake。）
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
-- CI 自動建置並推送預編譯映像到 **`codeberg.org/lawlietr/redlib`**，
-  支援 **`linux/amd64`** 與 **`linux/arm64`** 雙平台。
+- **未來鏡像一律由 GitHub Actions 編譯並推送**到主登錄區 **`ghcr.io/lawlietr/redlib`**（雙平台
+  `linux/amd64` + `linux/arm64`）。本地 Forgejo runner 那條路**保留**但改為**只手動觸發**（fallback 與 musl 產物來源）；
+  本機 `docker build` 也支援，適合改動測試與離線除錯。
 
 ## 部署方式
 
 ### 1. Docker（拉取預編譯映像，推薦）
 
 ```bash
-# 若映像設為私有，先登入：docker login codeberg.org
-docker pull codeberg.org/lawlietr/redlib:latest
+# 主登錄區（ghcr 公開，匿名可拉，不需 docker login）
+docker pull ghcr.io/lawlietr/redlib:latest
 
 docker run -d \
   --name redlib \
   -p 8080:8080 \
   --restart unless-stopped \
-  codeberg.org/lawlietr/redlib:latest
+  ghcr.io/lawlietr/redlib:latest
+
+# 要固定版本就用 <git-sha> tag：
+#   docker pull ghcr.io/lawlietr/redlib:d572b2e
+# 備援登錄區（僅手動觸發才更新，musl 靜態產物）：
+#   docker pull codeberg.org/lawlietr/redlib:latest
 ```
 
 啟動後可透過 `http://localhost:8080` 存取。
@@ -55,7 +61,7 @@ docker run -d \
 # docker-compose.yml
 services:
   redlib:
-    image: codeberg.org/lawlietr/redlib:latest
+    image: ghcr.io/lawlietr/redlib:latest
     container_name: redlib
     ports:
       - "8080:8080"
@@ -86,7 +92,10 @@ docker compose up -d
 > 本 repo 根目錄的 `docker-compose.yaml` 同時支援兩種來源（同一個 service，用 `REDLIB_IMAGE` 切換）：
 >
 > ```bash
-> # A) 拉 CI 預編譯映像（推薦，等同上面的 image: 寫法）
+> # A) 拉 CI 預編譯映像（主路徑：GitHub Actions 產的 ghcr）
+> REDLIB_IMAGE=ghcr.io/lawlietr/redlib:latest docker compose up -d --pull always --no-build
+>
+> # A2) 備援登錄區（現在只在手動跑 `.forgejo/workflows/build.yml` 時才更新）
 > REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest docker compose up -d --pull always --no-build
 >
 > # B) 本地從原始碼建置（以本 repo 為 context build 根目錄 `Dockerfile`，含 PR bake）
@@ -122,10 +131,10 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 **兩個 registry 現在都是雙架構**（`linux/amd64` + `linux/arm64`），而且 **tag 命名一致**：
 
-| Registry | `latest` | `<git-sha>` | 每架構 tag |
-|---|---|---|---|
-| `codeberg.org/lawlietr/redlib`（主，musl 全靜態） | ✅ manifest list | ✅ manifest list | `amd64` / `arm64` |
-| `ghcr.io/lawlietr/redlib`（備援，glibc 靜態） | ✅ manifest list | ✅ 自 2026-10-21 | `amd64` / `arm64` |
+| Registry | 角色 | `latest` | `<git-sha>` | 每架構 tag |
+|---|---|---|---|---|
+| `ghcr.io/lawlietr/redlib` | **主**（GitHub Actions，push 自動跑；glibc 靜態產物） | ✅ manifest list | ✅ manifest list | `amd64` / `arm64` |
+| `codeberg.org/lawlietr/redlib` | **備援**（musl 靜態產物；**僅手動觸發**才更新，tag 會落後） | ✅ manifest list | ✅ | `amd64` / `arm64` |
 
 | 標籤 | 說明 |
 |------|------|
@@ -193,17 +202,49 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 ## CI/CD
 
-- 觸發：`Dockerfile`、`Dockerfile.pack`、`redlib-prs.txt`、`.build/**`、`.forgejo/scripts/build_and_push.sh` 變動，或手動 "Run workflow"。
-- 執行環境：本機自架 Forgejo Runner（`redlib` label），musl 原生交叉編譯 amd64/arm64（無 QEMU）+ BuildKit/cargo cache mount（增量建置）。
-- 推送目標：`codeberg.org/lawlietr/redlib`，
-  每輪建置產生 `latest`（rolling）與 `<git-sha>`（可重現 pin）兩個多平台 manifest list，
-  同時包含 `linux/amd64` 與 `linux/arm64`。
-- GitHub Actions（`.github/workflows/build.yml`）：**矩陣兩個 job + 一個 manifest job**。
-  amd64 在 `ubuntu-latest`、arm64 在 `ubuntu-24.04-arm`（public repo 免費的原生 arm64 hosted runner），
+**主路徑（2026-10-21 起）：GitHub Actions**。
+
+- GitHub Actions（`.github/workflows/build.yml`）：**push 到 `main` 且動到 `Dockerfile`、`redlib-prs.txt`、`.build/**`、`.github/**` 就自動跑**（或手動 "Run workflow"）；
+  **矩陣兩個 job + 一個 manifest job**：amd64 在 `ubuntu-latest`、arm64 在 `ubuntu-24.04-arm`（public repo 免費的原生 arm64 hosted runner），
   都用**同一份** `Dockerfile` 與同一份 PR bake 原生編譯，各自推 `:amd64`/`:arm64`，
   再由 `.github/scripts/merge_manifest.sh` 以 `docker buildx imagetools create` 合併成
-  `ghcr.io/lawlietr/redlib:{latest,<git-sha>}`（多平台 manifest list）。細節：`design/github-actions-workflow.md`。
-- 細節與故障排除：`design/forgejo-runner-workflow.md`、`design/forgejo-runner-deployment.md`、`design/multi-arch-build.md`。
+  `ghcr.io/lawlietr/redlib:{latest,<git-sha>}`（多平台 manifest list）。並發以 `concurrency.group` 串行，
+  避免 manifest merge 混到不同 commit 的兩個架構。細節：`design/github-actions-workflow.md`。
+- **保留但不自動跑：本地 Forgejo runner**（`.forgejo/workflows/build.yml`，12 機 `redlib` label）。
+  2026-10-21 起 `push` 觸發已移除，**只剩 `workflow_dispatch`**（可選填 reason）。用途：
+  GitHub Actions 不時的 fallback、唯一產 musl 靜態 binary 的路、以及把 `codeberg.org/lawlietr/redlib` 的 tag 追平。
+  runner 基礎設施與磁碟紀律（30GB、`disk_guard.sh` + prune）完整保留，見 `design/forgejo-runner-workflow.md`、
+  `design/forgejo-runner-deployment.md`、`design/multi-arch-build.md`。
+- ⚠ **`codeberg.org/lawlietr/redlib` 的 tag 從此會落後**（不再自動重建）。要追平就手動跑一次該 workflow，
+  或直接改用 ghcr。兩個登錄區產物不同（musl vs glibc 靜態），**不比 digest**。
+- 驗證每一步的做法：`design/error-triage-playbook.md`；逐功能回歸清單：`design/upstream-pr-bake.md` §7。
+
+## 本地編譯與測試（改動前後都建議跑）
+
+CI 不是唯一入口，本地 build + 起容器驗證是**明確支援**的做法（也是 `.forgejo/` 那條路以外
+仍能拿到 musl 以外產物的方式）：
+
+```bash
+# 1) build（只產本機架構；含 redlib-prs.txt 的 PR bake）
+docker build -t redlib-local .
+#    換 upstream 分支/commit：--build-arg REDLIB_BRANCH=<branch|tag|sha>
+
+# 2) 起起來（預設 8080，避開佔用就換埠）
+docker run -d --name redlib-local -p 8090:8080 redlib-local
+
+# 3) 四條快速 smoke（完整清單見 design/upstream-pr-bake.md §7）
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8090/r/SteamdeckGames/comments/1xautuo/horizon_forbidden_west_should_not_be_steam_deck/'
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8090/r/__definitely_no_such_sub__/comments/1xautuo/x/'   # 負 control：要 404/400，不是 200
+docker logs redlib-local 2>&1 | grep -ci panic   # 要 0
+```
+
+要點：
+- **只產本機架構**。在 x86_64 上不會幫你產 arm64；本機也沒有 qemu binfmt，`--platform linux/arm64`
+  會 `exec format error`（arm64 的執行驗證要真 arm64 硬體，見 `TODO.md`）。
+- **別用裸 curl 探 Reddit API** 来判断成敗——會給假陰性；要比就比「同一份代碼含/不含候選 PR」的**雙映像端到端 A/B**，
+  手法見 `design/error-triage-playbook.md`。
+- 本地 build 的產物 **不推 registry**，也不会動到兩個登錄區；要發佈只能走 CI（或手動跑 `.forgejo/`）。
 
 ## 故障排除
 
