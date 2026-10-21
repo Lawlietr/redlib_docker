@@ -13,6 +13,7 @@ This repository's own configuration files and scripts are licensed under the MIT
 - `.build/apply_redlib_prs.sh` — fetches `pull/<n>/head` and merges each listed PR into the cloned redlib tree (`--no-ff`, no `-X ours`).
 - `TODO.md` — **Work progress and priority only** (P0/P1/P2/P3). Each entry = 做什麼 + 為什麼/範圍 + 優先級 + 指向 `design/` 的連結。禁止出現在此：redlib 源碼檔案/代碼標識符、route 路徑、env 變數名、分步流程、驗證步驟（這些一律入 `design/` 並由 TODO 引用；repo 自有檔案如 `build_and_push.sh` 可提）。優先級定義見檔頭。
 - `design/` — **Implementation guidelines** for each task (deployment steps, config, gotchas). Detailed/longer explanations live here, referenced from `TODO.md`. Keep sensitive info (registration `uuid`/`token`, `CODEBERG_PAT`) out of these files; use placeholders and note where the real value must be entered.
+- `design/error-triage-playbook.md` — **SOP for runtime error reports** (使用者回報 redlib 執行期錯誤): map the message to the upstream call site, check a candidate upstream PR's base/cleanliness, then prove the fix with a two-image end-to-end A/B (never bare curl), run the fixed regression list with negative controls, and file the tier decision. Start here on any "broken page / parse error" report.
 
 ## Build Commands
 
@@ -92,10 +93,17 @@ Multi-stage build:
 
 - Source: https://github.com/redlib-org/redlib.git, `REDLIB_BRANCH=main`
 - **Bake**: upstream `main` alone is NOT enough. Still-open PRs are merged on top at build time; the list lives in `redlib-prs.txt` and is applied by `.build/apply_redlib_prs.sh` (both the Dockerfile and the multi-arch CI path read the same list). Tiers, review data, drift procedure: `design/upstream-pr-bake.md`.
-  - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id`), #539 (lazy-load images).
+  - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id`), #539 (lazy-load images), #592 (thread pages: percent-encode the single `/comments` slash — **a workaround for Reddit's anonymous-thread block, not a real fix**; see `design/upstream-pr-bake.md` §8.8).
   - ⚠ The 2026-09-18 note claiming those PRs were "merged into upstream main (up to `8167e00`)" was **wrong**: `8167e00` was our own in-build merge tip, not an upstream commit. Upstream `main` (HEAD `a4d36e9`, 2026-04-24) contains none of them — re-verified 2026-10-07 with `git cherry` + content grep.
   - #509 (hyper-tls) stays out: superseded by main's wreq migration.
 - Build: `cargo build --release --locked --bin redlib`
+
+### Error Triage (runtime bug reports)
+When a user reports a broken page or a runtime error message, follow `design/error-triage-playbook.md` instead of reasoning from the message alone. Key rules learned from the 2026-10-21 thread-page incident:
+- redlib's error strings are symptoms (a parse error usually means Reddit returned non-JSON, e.g. a 403 block page) — locate the failing upstream call site first.
+- "restart the container / rotate the token" is not a diagnosis: Reddit's block can be a **path rule** (same token, same IP: listings 200, thread route 403).
+- An upstream PR's claimed mechanism must be reproduced in **our** environment. The accepted proof is two images (with / without the candidate PR) built from the same list, run side by side, with the control image reproducing the exact reported message. Bare `curl` probing is unreliable because without a correctly-minted token both the plain and the encoded URL return the same block page (false negative).
+- Classify every accepted fix as **root fix** or **workaround** and record its re-break trigger plus the observable message to grep next time.
 
 ### Environment Variables (Runtime)
 

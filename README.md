@@ -6,8 +6,9 @@
 輕量級 Reddit 替代方案，透過 Docker 部署。
 
 - 建置時 clone upstream `main`（https://github.com/redlib-org/redlib），再把 **仍未合併進 upstream 的上游 PR** bake 進去：
-  清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539 → CMAF 影片與 `rich:video`、
-  0 則留言 permalink panic、預設文章排序生效、使用者文章分享連結、圖片 lazy-load），
+  清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539/#592 → CMAF 影片與 `rich:video`、
+  0 則留言 permalink panic、預設文章排序生效、使用者文章分享連結、圖片 lazy-load、
+  貼文頁路由編碼（**繞行 Reddit 封鎖，非根治**，見 `RELEASE_NOTES.md`）），
   由 `.build/apply_redlib_prs.sh` 套用。判斷依據、分級與重新評估程序：`design/upstream-pr-bake.md`。
   （#509 hyper-tls 已被 main 的 wreq 遷移 #544 取代，不 bake。）
 - 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
@@ -135,6 +136,18 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 >
 > 另有 GitHub Actions 產的鏡像備援 `ghcr.io/lawlietr/redlib:latest`（**僅 amd64**；
 > repo 為 private → package 也是 private，拉取需 `read:packages` token）。
+
+## 更新說明（Release notes）→ `RELEASE_NOTES.md`
+
+完整 changelog 在 **`RELEASE_NOTES.md`**（英文）。最近一輪（2026-10-21）要點：
+
+- 貼文頁已恢復：bake 上游 #592，把 `/r/<sub>` 與 `comments` 之間那一個 slash 編碼成 `%2f`，
+  避開 Reddit 對匿名 client 的**路徑規則**封鎖；同時把區塊錯誤改成明確的 403 訊息。
+- ⚠ **這是暫緩之計，不是根治**：Reddit 的政策是把這類資料推向登入後才開放。
+  一旦 Reddit 開始 normalise `%2f`，貼文頁會**再度全數失效**；屆時看到的是
+  `Reddit blocked this request (403 Forbidden): …`，不是 parse error。
+  重啟容器（換 token）無效 —— 封鎖是按路徑，不是按 token。
+- 同一事件的上游 #589（首頁 feed parse error）與 #567（Anubis PoW）**不在這輪修正範圍**。
 
 ## CI/CD
 

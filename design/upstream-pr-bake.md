@@ -47,8 +47,9 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | [#521](https://github.com/redlib-org/redlib/pull/521) | `93c03bb1` | `src/subreddit.rs`：`post_sort` 由 `req.cookie("post_sort")` 改 `setting(&req, "post_sort")` | **`REDLIB_DEFAULT_POST_SORT` 不必先存設定才生效**（直接關係本 repo 的 env） |
 | [#560](https://github.com/redlib-org/redlib/pull/560) | `7a284d30` | 新增 `/u/:name/s/:id` 分享連結處理 | 使用者文章分享連結不再 404 |
 | [#539](https://github.com/redlib-org/redlib/pull/539) | `514202ad` | `templates/utils.html` 移除 `<svg><image>` 包裝，改直出 `<img loading="lazy">` | 圖片 lazy-load；同時覆蓋原 fork patch D3 的 SVG 部分 |
+| [#592](https://github.com/redlib-org/redlib/pull/592) | `1e9515eab8d0` | `src/client.rs`：`encode_thread_route()` 把 `/r/<sub>` 與 `comments` 之間那**一個** slash 編碼成 `%2f`（放進 `json()` 入口，涵蓋所有呼叫者）；另加 `non_json_response_error()` 把 403 區塊頁報成「Reddit blocked this request (403 Forbidden)…」而非 parse error。附 5 個純函式測試 | **貼文頁恢復可用**（此前所有實例的 `/r/x/comments/<id>/…` 全數 403 → 前端 `Failed to parse page JSON data: expected value at line 1 column 1`）。⚠ **這是繞行，不是根治**，見 §8.8 |
 
-**merge 順序 = `redlib-prs.txt` 檔內順序**（549 → 542 → 521 → 560 → 539）。五支檔案重疊極少（549 與 560 同碰 `src/main.rs` 但不同區塊），實測 `--no-ff` 全 clean。
+**merge 順序 = `redlib-prs.txt` 檔內順序**（549 → 542 → 521 → 560 → 539 → 592）。六支檔案重疊極少（549、592 同碰 `src/client.rs` 但不同區塊；549 與 560 同碰 `src/main.rs` 但不同區塊），實測 `--no-ff` 全 clean（2026-10-21 以「五支 Tier 1 之上再併 592」的順序實測）。
 
 > 不用 `-X ours`：舊 bake 鏈用 `-X ours` 是因為那些 PR 基於 pre-wreq 的 main；現在五支都 clean，`-X ours` 只會**靜默吃掉 upstream 改動**（正是 pr509 那棵樹悄悄留著 pre-wreq `client.rs` 的教訓）。
 
@@ -97,7 +98,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 ## 7. 驗證 checklist
 
 **本地（x86-64，工具鏈在容器內）**
-- [ ] `docker build -t redlib:local-test .` 成功；log 中出現 5 行 `Merging PR #<n> -> <sha>` 且無 `warning:`
+- [ ] `docker build -t redlib:local-test .` 成功；log 中出現 6 行 `Merging PR #<n> -> <sha>` 且無 `warning:`
 - [ ] `docker run --rm --entrypoint /redlib redlib:local-test --help` 可執行
 - [ ] 靜態確認 baked 樹：`CMAF`、`rich:video`、`/vid/:id/:prefix/:size`、`comments.len() > 0`、`setting(&req, "post_sort")`、`/u/:name/s/:id` 都在
 
@@ -107,6 +108,9 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 - [ ] 未存過設定的新訪客：`REDLIB_DEFAULT_POST_SORT` 生效
 - [ ] `/u/<user>/s/<postid>` 分享連結正確導向
 - [ ] 文章圖片帶 `loading="lazy"`，版面不破（#539 改了 post media 的 DOM 結構）
+- [ ] 貼文頁 `/r/<sub>/comments/<id>/<slug>/` 200 且留言正常（#592）；對照組（不含 #592 的舊映像）應精確重現 `Failed to parse page JSON data: expected value at line 1 column 1`
+- [ ] 不存在的 post / sub 仍回**正確的 Reddit 404/400 錯誤頁**，不是 parse error（#592 第二個 commit 的錯誤分級）
+- [ ] 列表端點未受 #592 影響：`/r/<sub>`、`/r/popular`、`/r/all`、`/search`、`/u/<user>`、`/r/<sub>/duplicates/<id>`
 - [ ] 舊 `/vid/{id}/{size}` 連結 → 404（**已知 breaking**，見 §8）
 
 ## 8. 風險 / Gotchas
@@ -116,10 +120,14 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 3. **PR head 會動**：open PR 可能被 force-push。`redlib-prs.txt` 的 SHA 欄只用於**警示**，build 仍抓最新 head；要完全重現某次映像，用 registry 的 `<git-sha>` tag，或把 `REDLIB_BRANCH` 釘死 + 手動 fetch 指定 SHA。
 4. **`--depth 300`**：shallow clone 必須夠深才能找到舊 PR 的 merge base（目前 PR 的 merge base 距 main HEAD 約 8 個 commit，300 很寬）。若 `git merge` 出現「unrelated histories」類錯誤 → 加大 depth。
 5. **兩條 build 路徑要同步**：`Dockerfile`（glibc 靜態，amd64）與 `.forgejo` 腳本（musl 交叉編譯，amd64+arm64）都必須讀同一份 `redlib-prs.txt`，否則 CI 映像與本地映像內容不同。
-6. **clean merge ≠ 語意正確**：五支都不碰 `client.rs`/`Cargo.lock`，風險低，但仍需一次真實編譯（§7）才算數。
+6. **clean merge ≠ 語意正確**：六支裡只有 #592 碰 `src/client.rs`（其餘改動落在模板、`main.rs`、`subreddit.rs`、`utils.rs`），都沒碰 `Cargo.lock`，風險低，但仍需一次真實編譯（§7）與一次雙映像 A/B（`design/error-triage-playbook.md` §3）才算數。
 7. **參數路徑**：`apply_redlib_prs.sh` 會先 `cd` 進 source 目錄才讀 PR 檔，所以兩個參數一律先 `realpath` 解析。
    `.forgejo` 那條路徑傳的是**相對**路徑（`redlib-src` / `redlib-prs.txt`），Dockerfile 傳**絕對**路徑 —— 兩種都要測
    （2026-10-07 就是相對路徑在 12 runner 上炸 `redlib-prs.txt: No such file or directory`）。
+8. **#592 是繞行（workaround），不是根治**：它只是把 slash 編碼成 `%2f` 去**避開 Reddit 邊緣節點的路徑匹配規則**，Reddit 的政策方向是把這類資料推向登入後才能取用。再壞的觸發條件與處置：
+   - Reddit 開始 normalise 該編碼（把 `%2f` 還原成 `/` 再比對路徑）→ 貼文頁再度全數失效。屆時**不會**再出現誤導性的 parse error，而是 `Reddit blocked this request (403 Forbidden): Reddit now requires a logged-in session for this endpoint | <path>`（來自 `client.rs` 的 `non_json_response_error()`）——**下次使用者回報先 grep 這個字串**，就能直接判定「舊绕行失效」而不是新故障。
+   - 上游同一事件還標明**不在這支 PR 範圍**的鄰居問題：首頁 `hot.json` 的 parse error（上游 #589）、Anubis PoW 擋程式化存取（上游 #567）。本機 2026-10-21 實測這兩個端點仍正常，但別误以為一併修好。
+   - 上游 PR 未合併（無 review、1 位參與者、1 個 👎），因此 head 可能被 force-push：`redlib-prs.txt` 的 SHA 一漂移就要重跑 `design/error-triage-playbook.md` 的 A/B，不能只信 build 成功。
 
 ## 9. 與 fork patch 計畫（P1）的關係
 

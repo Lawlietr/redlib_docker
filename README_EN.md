@@ -6,8 +6,9 @@
 A lightweight Reddit alternative, deployed via Docker.
 
 - The build clones upstream `main` (https://github.com/redlib-org/redlib) and then bakes the upstream PRs that are **still not merged upstream**:
-  the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539 → CMAF video + `rich:video`,
-  the 0-comment permalink panic, default post sort taking effect, user post share links, lazy-loaded images),
+  the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539/#592 → CMAF video + `rich:video`,
+  the 0-comment permalink panic, default post sort taking effect, user post share links, lazy-loaded images,
+  thread-page route encoding — **a workaround for Reddit's block, not a fix**, see `RELEASE_NOTES.md`),
   applied by `.build/apply_redlib_prs.sh`. Evidence, review tiers and the re-review procedure: `design/upstream-pr-bake.md`.
   (#509 hyper-tls is superseded by the wreq migration on `main` (#544) and is not baked.)
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
@@ -137,6 +138,20 @@ All tags are multi-platform manifest lists (`linux/amd64` + `linux/arm64`):
 >
 > A mirror built by GitHub Actions also exists: `ghcr.io/lawlietr/redlib:latest`
 > (**amd64 only**; the repo is private, so the package is private and pulling needs a `read:packages` token).
+
+## Release notes → `RELEASE_NOTES.md`
+
+The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest round (2026-10-21):
+
+- Thread pages load again: upstream #592 is baked, percent-encoding the **single** slash between
+  `/r/<sub>` and `comments` (`/r/<sub>%2fcomments/…`) so it no longer matches Reddit's
+  path rule for anonymous clients; a blocked response now reports an explicit 403 message.
+- ⚠ **This is a stopgap, not a fix.** Reddit's direction is to require a logged-in session for
+  this data. If Reddit starts normalising `%2f`, thread pages **break again** — and the message
+  will then read `Reddit blocked this request (403 Forbidden): …`, not a parse error.
+  Restarting the container (rotating the OAuth token) does **not** help: the block is path-based.
+- Out of scope for this round (upstream says so explicitly): #589 (front-page feed parse errors)
+  and #567 (Anubis PoW blocking programmatic access).
 
 ## CI/CD
 
