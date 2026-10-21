@@ -50,6 +50,7 @@
 - 細節：`design/github-actions-workflow.md` §5、`design/multi-arch-build.md` §11。
 
 ## 近期完成
+- 2026-10-21：**雙架構上線確認** —— amd64 與 arm64 的 redlib container 都已架起來，實測兩個架構都正常運行（跑的是含 #592 的六支 bake 映像）。逐功能線上核對（影片 proxy、panic、post sort、分享連結、lazy-load）仍未做，保留在上方 P1 條目。
 - 2026-10-21：**bake 上游 #592 修好貼文頁**（Reddit 對匿名 client 的路徑規則封鎖 → 前端 parse error）。六支 Tier 1 累積 `--no-ff` 全 clean；本地雙映像 A/B 實測（對照組精確重現舊錯誤、含 592 組 200 + 留言正常 + 回歸清單全過）；`redlib-prs.txt` 加行、`upstream-pr-bake.md` §2/§7/§8 同步（§8.8 記錄**繞行**屬性、再壞的觸發條件與 observable 字串）；新增 `RELEASE_NOTES.md`（英文）說明這只是暫緩之計而非真正修正，README 雙語加指針與警告。
 - 2026-10-21：**新增 `design/error-triage-playbook.md`** —— 從「貼文頁 parse error」事件沉澱出可重現的溯源 SOP：錯誤訊息→呼叫點映射、上游 PR 基底檢查、**含/不含候選 PR 的雙映像端到端 A/B**（取代裸 curl 探測，後者在無合法 token 時會給假陰性）、固定回歸清單（含負 control 要回正確 404 而非 parse error）、tier 判定與記帳要求（繞行 vs 根治、observable 字串）。
 - 2026-10-07：**更正 9/18 的 bake 退役判斷**（上游 main 未含那 5 支 PR）；重新接回 bake 鏈，改用上游 PR 取代原 fork port 計畫的 C/D1 子集；新增 `redlib-prs.txt` + `.build/apply_redlib_prs.sh` 供 `Dockerfile` 與多架構腳本共用；兩條 workflow 的觸發路徑補上清單與 `.build/**`；新增 `design/upstream-pr-bake.md`。

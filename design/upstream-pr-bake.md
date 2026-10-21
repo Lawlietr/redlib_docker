@@ -98,8 +98,8 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 ## 7. 驗證 checklist
 
 **本地（x86-64，工具鏈在容器內）**
-- [ ] `docker build -t redlib:local-test .` 成功；log 中出現 6 行 `Merging PR #<n> -> <sha>` 且無 `warning:`
-- [ ] `docker run --rm --entrypoint /redlib redlib:local-test --help` 可執行
+- [x] `docker build -t redlib:local-test .` 成功；log 中出現 6 行 `Merging PR #<n> -> <sha>` 且無 `warning:`（2026-10-21：本地與兩條 CI 皆是 `Baked 6 PR(s)`）
+- [x] `docker run --rm --entrypoint /redlib redlib:local-test --help` 可執行（2026-10-21 以更強的證據取代：published 映像 `codeberg.org/lawlietr/redlib:15cc3c1` 實際起服務並回應請求）
 - [ ] 靜態確認 baked 樹：`CMAF`、`rich:video`、`/vid/:id/:prefix/:size`、`comments.len() > 0`、`setting(&req, "post_sort")`、`/u/:name/s/:id` 都在
 
 **線上（部署後）**
@@ -108,10 +108,14 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 - [ ] 未存過設定的新訪客：`REDLIB_DEFAULT_POST_SORT` 生效
 - [ ] `/u/<user>/s/<postid>` 分享連結正確導向
 - [ ] 文章圖片帶 `loading="lazy"`，版面不破（#539 改了 post media 的 DOM 結構）
-- [ ] 貼文頁 `/r/<sub>/comments/<id>/<slug>/` 200 且留言正常（#592）；對照組（不含 #592 的舊映像）應精確重現 `Failed to parse page JSON data: expected value at line 1 column 1`
-- [ ] 不存在的 post / sub 仍回**正確的 Reddit 404/400 錯誤頁**，不是 parse error（#592 第二個 commit 的錯誤分級）
-- [ ] 列表端點未受 #592 影響：`/r/<sub>`、`/r/popular`、`/r/all`、`/search`、`/u/<user>`、`/r/<sub>/duplicates/<id>`
+- [x] 貼文頁 `/r/<sub>/comments/<id>/<slug>/` 200 且留言正常（#592）；對照組（不含 #592 的舊映像）應精確重現 `Failed to parse page JSON data: expected value at line 1 column 1`（2026-10-21 雙映像 A/B 兩半都成立）
+- [x] 不存在的 post / sub 仍回**正確的 Reddit 404/400 錯誤頁**，不是 parse error（#592 第二個 commit 的錯誤分級）
+- [x] 列表端點未受 #592 影響：`/r/<sub>`、`/r/popular`、`/r/all`、`/search`、`/u/<user>`、`/r/<sub>/duplicates/<id>`（2026-10-21 全部 200）
 - [ ] 舊 `/vid/{id}/{size}` 連結 → 404（**已知 breaking**，見 §8）
+
+> 2026-10-21：**上線確認已完成於兩個架構**——amd64 與 arm64 的 container 都已架起來、實測兩邊都正常運行（`codeberg.org/lawlietr/redlib:latest` = `15cc3c1`，同一個 manifest list）。
+> 上面仍標 `[ ]` 的項目是**逐功能**的線上確認（影片 proxy 新格式、0 則留言 panic、預設 post sort、分享連結、lazy-load、舊 `/vid` 連結 404），
+> 這些需要對應的貼文/設定才能驗，跟「容器能不能跑」不同層次，別因為架構實測通過就當成已核。
 
 ## 8. 風險 / Gotchas
 
@@ -125,7 +129,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
    `.forgejo` 那條路徑傳的是**相對**路徑（`redlib-src` / `redlib-prs.txt`），Dockerfile 傳**絕對**路徑 —— 兩種都要測
    （2026-10-07 就是相對路徑在 12 runner 上炸 `redlib-prs.txt: No such file or directory`）。
 8. **#592 是繞行（workaround），不是根治**：它只是把 slash 編碼成 `%2f` 去**避開 Reddit 邊緣節點的路徑匹配規則**，Reddit 的政策方向是把這類資料推向登入後才能取用。再壞的觸發條件與處置：
-   - Reddit 開始 normalise 該編碼（把 `%2f` 還原成 `/` 再比對路徑）→ 貼文頁再度全數失效。屆時**不會**再出現誤導性的 parse error，而是 `Reddit blocked this request (403 Forbidden): Reddit now requires a logged-in session for this endpoint | <path>`（來自 `client.rs` 的 `non_json_response_error()`）——**下次使用者回報先 grep 這個字串**，就能直接判定「舊绕行失效」而不是新故障。
+   - Reddit 開始 normalise 該編碼（把 `%2f` 還原成 `/` 再比對路徑）→ 貼文頁再度全數失效。屆時**不會**再出現誤導性的 parse error，而是 `Reddit blocked this request (403 Forbidden): Reddit now requires a logged-in session for this endpoint | <path>`（來自 `client.rs` 的 `non_json_response_error()`）——**下次使用者回報先 grep 這個字串**，就能直接判定「舊繞行失效」而不是新故障。
    - 上游同一事件還標明**不在這支 PR 範圍**的鄰居問題：首頁 `hot.json` 的 parse error（上游 #589）、Anubis PoW 擋程式化存取（上游 #567）。本機 2026-10-21 實測這兩個端點仍正常，但別误以為一併修好。
    - 上游 PR 未合併（無 review、1 位參與者、1 個 👎），因此 head 可能被 force-push：`redlib-prs.txt` 的 SHA 一漂移就要重跑 `design/error-triage-playbook.md` 的 A/B，不能只信 build 成功。
 
