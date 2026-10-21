@@ -115,6 +115,13 @@ done
 負 control 特別重要：PR 若改了錯誤分級邏輯，這裡才是證據（把 block 誤報成 parse error
 正是原 issue 難診斷的原因）。
 
+> **grep 陷阱（2026-10-21 實測）**：redlib 的錯誤頁**範本本身**就帶有一段提到
+> `Failed to parse page JSON data` 的協助手語，所以「在頁面 HTML 裡 grep 這個字串」會**假陽性**
+> （不存在的 post 回真 404 時也會被計入）。真正的判別點是錯誤頁的標題/內文前綴
+> （`Error: Reddit error 404 … Not Found`）與 container log 的 `Error page rendered: Reddit error <code> …`
+> 行；要判 block 就只抓 `Reddit blocked this request (403` —— 這個串只來自 upstream 呼叫點的錯誤分級，
+> 不會出現在範本裡。
+
 ## 5. 步驟五：tier 判定與落地
 
 1. 依 `design/upstream-pr-bake.md` §2/§3/§4 決定 Tier（已 bake／可選待決策／不採用＋理由）。
@@ -147,7 +154,12 @@ done
   （#549 同碰 `client.rs` 但不同區塊）。
 - A/B：對照組精確重現 parse error（404）；含 #592 組 200、標題與留言正常；
   §4 回歸清單全過，負 control 為正確 404/400 頁。
-- 定性：**绕行**（Reddit 若 normalise 該編碼就會再壞；屆時訊息為
+- 最終驗證是對**已發佈的映像**做的，不是對本地 test 映像：兩個 CI（本地 runner 多架構 + GitHub
+  Actions amd64）都綠、log 都是 6 行 `Merging PR #<n>` 且無 `head moved` 警告；拉
+  `codeberg.org/lawlietr/redlib:<git-sha>`（amd64+arm64 manifest list 都在）重跑 §4 清單全過。
+  ghcr 那邊只能確認 build/push 成功（拉取需要 `read:packages` scope 的 token，現有 token 只有
+  `repo`/`workflow`，所以拉 image 會被 `denied` —— 這不是映像的問題）。
+- 定性：**繞行**（Reddit 若 normalise 該編碼就會再壞；屆時訊息為
   `Reddit blocked this request (403 Forbidden)`，對應 `client.rs` 的 `non_json_response_error()`）。
 - 不在這支 PR 範圍、需另立條目：`/r/popular/hot.json` 的 parse error（上游 #589）、
   Anubis PoW 擋程式化存取（上游 #567）。

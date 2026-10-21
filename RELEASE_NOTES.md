@@ -53,12 +53,13 @@ working in our own test run, but do not assume they are fixed):
 - parse errors on the front-page feed (`/r/popular/hot.json`) — upstream #589
 - Anubis PoW challenge blocking programmatic access — upstream #567
 
-**How to pull / pin.** `latest` is a rolling multi-arch tag
-(`codeberg.org/lawlietr/redlib`, mirrored at `ghcr.io/lawlietr/redlib`), so a
-re-pull plus container recreation is required; a plain `docker compose up -d`
-with a `build:` key present will *not* pull the registry image. To keep a
-reproducible deployment across future bake changes, pin the `<git-sha>` tag
-instead of `latest`:
+**How to pull / pin.** Tags carrying this change:
+`codeberg.org/lawlietr/redlib:latest` and `:15cc3c1` (both multi-arch,
+amd64 + arm64); the mirror `ghcr.io/lawlietr/redlib:latest` is amd64 only.
+`latest` is a rolling tag, so a re-pull plus container recreation is required;
+a plain `docker compose up -d` with a `build:` key present will *not* pull the
+registry image. To keep a reproducible deployment across future bake changes,
+pin the `<git-sha>` tag instead of `latest`:
 
 ```bash
 REDLIB_IMAGE=codeberg.org/lawlietr/redlib:<git-sha> \
