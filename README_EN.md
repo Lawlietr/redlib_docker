@@ -5,9 +5,30 @@
 
 A lightweight Reddit alternative, deployed via Docker.
 
+> ## What this repo actually does: **merge and package**, not a fork
+>
+> There is **no redlib source code here**, and this is not a branch or a fork of upstream. The build
+> clones upstream `main` and then merges the PRs that **upstream itself received but has not merged**;
+> the result is packaged into a Docker image. Every functional change comes from upstream and its PRs —
+> this repo only **merges (bakes) and packages**, plus CI, Docker configuration and documentation.
+> That is why you will not find redlib's `src/` here; to read the source or report bugs go to upstream:
+> https://github.com/redlib-org/redlib
+>
+> **Where things live**
+>
+> | Item | Location |
+> |------|----------|
+> | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** |
+> | Prebuilt container images | `codeberg.org/lawlietr/redlib` (multi-platform `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`) |
+> | GitHub mirror (only the build entry point for GitHub Actions) | https://github.com/Lawlietr/redlib_docker → image `ghcr.io/lawlietr/redlib:latest` (amd64 only) |
+>
+> The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while the image path is
+> lowercase `lawlietr/redlib` (the Codeberg registry requires lowercase).
+
 - The build clones upstream `main` (https://github.com/redlib-org/redlib) and then bakes the upstream PRs that are **still not merged upstream**:
   the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539/#592 → CMAF video + `rich:video`,
-  the 0-comment permalink panic, default post sort taking effect, user post share links, lazy-loaded images,
+  the 0-comment permalink panic, default post sort taking effect, user post share links
+  (**#560's id-length condition is wrong, so they still do not work** — see `design/upstream-pr-bake.md` §8.9), lazy-loaded images,
   thread-page route encoding — **a workaround for Reddit's block, not a fix**, see `RELEASE_NOTES.md`),
   applied by `.build/apply_redlib_prs.sh`. Evidence, review tiers and the re-review procedure: `design/upstream-pr-bake.md`.
   (#509 hyper-tls is superseded by the wreq migration on `main` (#544) and is not baked.)

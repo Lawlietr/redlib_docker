@@ -14,15 +14,10 @@
 | **P3** | 想法/可選：nice-to-have、長期評估項 |
 
 ## 維護慣例
+- **commit 訊息一律用英文**（conventional-commit 風格的 subject，body 也用英文）。文件照雙語慣例：README 繁中/英文、`RELEASE_NOTES.md` 英文、`design/` 繁中。
 - 完成項移到「近期完成」並標日期；**待辦一律放上方對應優先級**，不要只寫在「近期完成」的敘述裡。
 - 新增待辦時直接開新條目（優先級由你指定或先問）。
 - 每條待辦保持「做什麼 + 為什麼/範圍 + 優先級 + design 連結」四要素，細節不展開。
-
-## P1 — 分享連結全形失效：上游 id 長度 guard 錯（自製 patch 候選）
-- **做什麼**：把分享連結路由的 id 長度條件放寬到涵蓋 5–7 字元（現行 Reddit post short id 是 7 字元），或先對上游提 issue；兩條入口（subreddit 版與使用者版）都要蓋。
-- **為什麼**：上游那支 PR 的 guard 只接受 8–12 字元，所以所有分享連結對現代 post 都回 404（錯誤页文字是 `Nothing here`）。路由本身有註冊、有在跑（用 8 字元假 id 可探到），只是條件把人擋在門外——**這是上游條件錯誤，不是我們 bake 失手**，但 bake 它並不能宣稱分享連結已修。
-- **優先級**：P1（站外進來的連結全壞；但不阻塞站內使用，故非 P0）。
-- 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩個探測 URL）、`design/error-triage-playbook.md` §4.1（路由偵測手法）。
 
 ## P2 — 鄰居故障：首頁與人機驗證（不在 #592 範圍）
 - **做什麼**：另外單獨評估「首頁 feed 的 parse error」與「Anubis PoW 擋程式化存取」兩條上游 issue 對應的 PR。
@@ -54,6 +49,12 @@
 - **為什麼**：目前 ghcr 鏡像只有 amd64；多架構只由本地 runner 發佈。三條可行路（交叉工具鏈 / QEMU buildx / arm64 hosted runner）的取捨已記錄。
 - **優先級**：P3。
 - 細節：`design/github-actions-workflow.md` §5、`design/multi-arch-build.md` §11。
+
+## P3 — 上游 #560 分享連結的 id 條件錯誤（**已知問題，暫不處理**）
+- **做什麼**：**不處理**（2026-10-21 決定），但**必須記得**：在未重新評估之前，任何地方都不能宣稱分享連結已修；要重启就先重讀 §8.9。
+- **為什麼**：上游那支 PR 的 id 長度條件只接受 8–12 字元，而現行 post short id 是 7 字元 → 兩條分享連結入口（subreddit 版與使用者版）對現代 post 一律 404，錯誤頁文字是 `Nothing here`。路由本身有註冊、有在跑（用 8 字元假 id 可探到另一種錯誤），只是條件把人擋在門外。屬上游條件錯誤，不是我們 bake 失手。
+- **狀態/優先級**：P3，暫不處理（站外進來的連結壞，但站內使用不受阻）。
+- 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩條探測 URL）與 §2 表格的 ⚠ 注記、`design/error-triage-playbook.md` §4.1（路由偵測手法）、`RELEASE_NOTES.md` 的 pre-existing known issue 段。
 
 ## 近期完成
 - 2026-10-21：**逐功能線上核對跑完**（對 `https://ddit.avpclub.uk` 與本地同映像容器）。通過：影片 proxy 的大寫 `CMAF`/`DASH` 路徑（206 `video/mp4`）、舊 `/vid` 路徑 404、0 則留言 permalink 不 panic、`loading="lazy"` 且無 SVG 包裝、路徑式排序正常、預設 post sort 對新訪客生效（用**只抽掉 #521** 的對照映像定因：抽掉後 env 失效）。順帶定因兩個**非回歸**：`?sort=` 向來是 no-op（含/不含 #521 都一樣）、不存在的 sub 回 200 空頁屬上游行為（線上與本地 byte 數一致）。未通過一項：分享連結（見上方 P1 條目）。

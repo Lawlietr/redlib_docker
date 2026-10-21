@@ -135,7 +135,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
    （2026-10-07 就是相對路徑在 12 runner 上炸 `redlib-prs.txt: No such file or directory`）。
 8. **#592 是繞行（workaround），不是根治**：它只是把 slash 編碼成 `%2f` 去**避開 Reddit 邊緣節點的路徑匹配規則**，Reddit 的政策方向是把這類資料推向登入後才能取用。再壞的觸發條件與處置：
    - Reddit 開始 normalise 該編碼（把 `%2f` 還原成 `/` 再比對路徑）→ 貼文頁再度全數失效。屆時**不會**再出現誤導性的 parse error，而是 `Reddit blocked this request (403 Forbidden): Reddit now requires a logged-in session for this endpoint | <path>`（來自 `client.rs` 的 `non_json_response_error()`）——**下次使用者回報先 grep 這個字串**，就能直接判定「舊繞行失效」而不是新故障。
-   - 上游同一事件還標明**不在這支 PR 範圍**的鄰居問題：首頁 `hot.json` 的 parse error（上游 #589）、Anubis PoW 擋程式化存取（上游 #567）。本機 2026-10-21 實測這兩個端點仍正常，但別误以為一併修好。
+   - 上游同一事件還標明**不在這支 PR 範圍**的鄰居問題：首頁 `hot.json` 的 parse error（上游 #589）、Anubis PoW 擋程式化存取（上游 #567）。本機 2026-10-21 實測這兩個端點仍正常，但別誤以為一併修好。
    - 上游 PR 未合併（無 review、1 位參與者、1 個 👎），因此 head 可能被 force-push：`redlib-prs.txt` 的 SHA 一漂移就要重跑 `design/error-triage-playbook.md` 的 A/B，不能只信 build 成功。
 9. **#560（分享連結）實際上用不了：上游 PR 自己的 id 長度 guard 錯了**（2026-10-21 逐功能核對發現，§7 那一項因此仍未打勾）。
    `src/main.rs` 的 `app.at("/u/:name/s/:id")` 用的是 `Some(id) if (8..12).contains(&id.len())`，而 Reddit 現行的 post short id 是 **7 字元**（例：`1x89e79`）→ 一律落到 `_ => error(req, "Nothing here")`，回 404。
@@ -143,6 +143,9 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
    → 路由有註冊、有在跑，**只有長度 guard 把人擋在門外**。既有的 `/r/:sub/s/:id`（ subreddit 版分享連結）用的是同一個 `8..12` 條件，所以**兩種分享連結現在都壞**。
    這不是我們 bake 造成的（#560 之前那條 route 根本不存在），但 bake #560 等於**沒辦法**宣稱「分享連結已修」。
    處理方向（尚未做）：自製 patch 把條件改成含 6–7 字元（Reddit 舊 post 有 5–6 字元 id），或上游開 issue；屬於 `design/fork-patch-dash-cmaf-bugfixes.md` 那類自製 patch（新 D 項）。
+   **2026-10-21 決定：暫不處理**（不寫 patch、不提上游 issue）。但這一項**不得從記憶裡消失**：
+   未重新評估前，README／release note／commit 訊息都不能宣稱分享連結已修；`redlib-prs.txt` 中的 #560 仍保留
+   （那條 route 對現行 id 永遠不匹配，等於死路但無害），TODO 已把它記在 P3「已知問題，暫不處理」。
 10. **`?sort=` 查詢參數向來是 no-op，與 #521 無關**（2026-10-21 定因）：含 #521 與不含 #521 的兩支映像，`/r/<sub>?sort=new` 與 `?sort=top` 都跟預設順序相同；會變的是**路徑式**排序（`/new`、`/top?t=day`、`/controversial?t=week`）。
     → §8.2 当初要求的「回歸 `/r/x/?sort=`」可以結了：**那是上游一向不支援的入口，不是 #521 的回歸**。以後別再為這個查 bake。
 11. **Reddit 側的 degenerate 資料會渲染成怪頁面，不是在我們這層**（2026-10-21 記錄，供下次分流用）：

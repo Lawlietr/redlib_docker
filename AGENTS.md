@@ -4,6 +4,19 @@
 
 This repository contains Docker build configurations for Redlib, a lightweight Reddit alternative built with Rust. The actual Rust source code is cloned from an external repository (https://github.com/redlib-org/redlib.git) during the Docker build process.
 
+**This is a merge-and-packaging repo, not a fork.** There is no redlib source here and no patched
+branch: the build clones upstream `main` and merges upstream's own not-yet-merged PRs (the list lives
+in `redlib-prs.txt`), then packages the result. Every functional change therefore comes from upstream —
+this repo only owns the bake chain, CI, Docker config and docs. Say so in user-facing docs
+(`README.md` / `README_EN.md` open with this statement; keep it there).
+
+**Where things live** (the names differ on purpose):
+
+| Item | Location |
+|------|----------|
+| This repo (Docker config, CI, docs) | https://codeberg.org/Lawlietr/redlib_docker (primary; also mirrored to `github.com/Lawlietr/redlib_docker` as the GitHub Actions build entry point) |
+| Container images | `codeberg.org/lawlietr/redlib` — **lowercase** namespace (registry requirement), multi-arch, tags `latest` + `<git-sha>`; amd64-only mirror at `ghcr.io/lawlietr/redlib:latest` |
+
 This repository's own configuration files and scripts are licensed under the MIT License (see `LICENSE`). The bundled Redlib source (built at Docker build time) retains its own upstream license (AGPL-3.0).
 
 ## Repository Layout
@@ -93,7 +106,7 @@ Multi-stage build:
 
 - Source: https://github.com/redlib-org/redlib.git, `REDLIB_BRANCH=main`
 - **Bake**: upstream `main` alone is NOT enough. Still-open PRs are merged on top at build time; the list lives in `redlib-prs.txt` and is applied by `.build/apply_redlib_prs.sh` (both the Dockerfile and the multi-arch CI path read the same list). Tiers, review data, drift procedure: `design/upstream-pr-bake.md`.
-  - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id`), #539 (lazy-load images), #592 (thread pages: percent-encode the single `/comments` slash — **a workaround for Reddit's anonymous-thread block, not a real fix**; see `design/upstream-pr-bake.md` §8.8).
+  - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id` share links — **known broken, upstream's id-length guard rejects current 7-char post ids; deliberately deferred, do not claim this works**, see `design/upstream-pr-bake.md` §8.9), #539 (lazy-load images), #592 (thread pages: percent-encode the single `/comments` slash — **a workaround for Reddit's anonymous-thread block, not a real fix**; see `design/upstream-pr-bake.md` §8.8).
   - ⚠ The 2026-09-18 note claiming those PRs were "merged into upstream main (up to `8167e00`)" was **wrong**: `8167e00` was our own in-build merge tip, not an upstream commit. Upstream `main` (HEAD `a4d36e9`, 2026-04-24) contains none of them — re-verified 2026-10-07 with `git cherry` + content grep.
   - #509 (hyper-tls) stays out: superseded by main's wreq migration.
 - Build: `cargo build --release --locked --bin redlib`
@@ -130,6 +143,8 @@ When a user reports a broken page or a runtime error message, follow `design/err
 
 ## Conventions
 
+- **Commit messages: English** (conventional-commit-style subject, e.g. `fix(build): …`; body in English).
+  Repo docs stay bilingual: `README.md` zh-TW, `README_EN.md` English, `RELEASE_NOTES.md` English, `design/*.md` zh-TW.
 - Shell: `set -euo pipefail`, quote variables, `&&` chaining, `printf` over `echo`
 - Git: `--depth 1`, verify upstream compiles on branch bump
 - CI scripts: `trap 'docker image prune -a -f' EXIT` for cleanup

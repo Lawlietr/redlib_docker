@@ -5,9 +5,26 @@
 
 輕量級 Reddit 替代方案，透過 Docker 部署。
 
+> ## 這個 repo 在做什麼：**合併與打包**，不是 fork
+>
+> 這裡**沒有 redlib 的原始碼**，也不是 upstream 的分支或 fork。build 時才 clone upstream `main`，
+> 再把 **upstream 自己提交、尚未被合併的 PR** merge 進去，然後打包成 Docker 映像。
+> 所有功能改動的來源都是 upstream 與其 PR，本 repo 只負責**合併（bake）與打包**，外加 CI、Docker 設定與文件。
+> 因此 repo 裡不會出現 redlib 的 `src/`；要讀原始碼或提 bug 請到 upstream：https://github.com/redlib-org/redlib
+>
+> **存放位置**
+>
+> | 項目 | 位置 |
+> |------|------|
+> | 本 repo（Docker 設定、CI、文件） | **https://codeberg.org/Lawlietr/redlib_docker** |
+> | 預編譯 container 映像 | `codeberg.org/lawlietr/redlib`（多平台 `linux/amd64` + `linux/arm64`；tag `latest` 與可 pin 的 `<git-sha>`） |
+> | GitHub 鏡像（只是 GitHub Actions 的編譯入口） | https://github.com/Lawlietr/redlib_docker → 映像 `ghcr.io/lawlietr/redlib:latest`（僅 amd64） |
+>
+> 兩者名稱不同：repo 是 `Lawlietr/redlib_docker`，registry 映像路徑是**小寫** `lawlietr/redlib`（Codeberg registry 要求小寫）。
+
 - 建置時 clone upstream `main`（https://github.com/redlib-org/redlib），再把 **仍未合併進 upstream 的上游 PR** bake 進去：
   清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539/#592 → CMAF 影片與 `rich:video`、
-  0 則留言 permalink panic、預設文章排序生效、使用者文章分享連結、圖片 lazy-load、
+  0 則留言 permalink panic、預設文章排序生效、使用者文章分享連結（**#560 的 id 條件有錯，現行 id 用不了**，見 `design/upstream-pr-bake.md` §8.9）、圖片 lazy-load、
   貼文頁路由編碼（**繞行 Reddit 封鎖，非根治**，見 `RELEASE_NOTES.md`）），
   由 `.build/apply_redlib_prs.sh` 套用。判斷依據、分級與重新評估程序：`design/upstream-pr-bake.md`。
   （#509 hyper-tls 已被 main 的 wreq 遷移 #544 取代，不 bake。）

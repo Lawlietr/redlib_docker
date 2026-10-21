@@ -52,7 +52,7 @@ git -C /tmp/redlib-triage diff --stat $(git -C /tmp/redlib-triage merge-base ori
 - 是否附測試、測試需不需要網路（`client.rs` 舊測試都打 Reddit，新的純函式測試才有價值）。
 - 作者是否自陳「沒跑 `cargo check`／`clippy`」——若是，**我們的真實編譯就是必要的驗證**，不是加分項。
 - 作者自標的 *not fixed / out of scope* 清單（例：同一事件裡 `/r/popular/hot.json` 與 Anubis PoW
-  是鄰居問題，這支 PR 不處理）→ 這些要另外進 TODO，別误以為一併修好。
+  是鄰居問題，這支 PR 不處理）→ 這些要另外進 TODO，別誤以為一併修好。
 - 上游是否已把它並入 main（`git cherry main refs/pr/<n> | grep -c '^-'`）→ 若已並入，
   走 `design/upstream-pr-bake.md` §5 的移除程序，不要重複 bake。
 
