@@ -25,10 +25,23 @@ permissions:
   packages: write
 
 jobs:
+  # One job per platform, built NATIVELY on a matching runner (no QEMU).
+  # ubuntu-24.04-arm is a standard GitHub-hosted arm64 runner, free for public
+  # repositories since 2025-08-07. Each job pushes <image>:amd64 / <image>:arm64;
+  # the manifest job below merges them into :latest and :<git-sha>.
   build:
     # Only run on GitHub; skip on Codeberg / local Forgejo.
     if: ${{ github.server_url == 'https://github.com' }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout Code
@@ -41,5 +54,29 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Image
+      - name: Build and Push Image (${{ matrix.arch }})
+        env:
+          ARCH: ${{ matrix.arch }}
         run: bash .github/scripts/build_and_push.sh
+
+  # Merge the two per-platform images into a multi-platform manifest list
+  # (:latest rolling + :<git-sha> pinnable), same tag scheme as the
+  # codeberg.org registry. Runs on amd64 because imagetools only talks to the
+  # registry (no execution of the target image).
+  manifest:
+    if: ${{ github.server_url == 'https://github.com' }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge and Push Manifest List
+        run: bash .github/scripts/merge_manifest.sh
