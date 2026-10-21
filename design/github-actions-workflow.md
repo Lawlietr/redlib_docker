@@ -5,9 +5,9 @@
 > `git remote add github ...` 已設好，`.github/workflows/build.yml` 由 push 到 `main` 自動觸發，
 > 走兩個 build job（amd64 跑 `ubuntu-latest`、arm64 跑 `ubuntu-24.04-arm`）+ 一個 manifest job，
 > 推 `ghcr.io/lawlietr/redlib:{latest,<git-sha>,amd64,arm64}`（四個 tag、兩架構）。
-> 本地 Forgejo（`.forgejo/`，多架構 musl）**保留但只手動觸發**（2026-10-21 移除 `push` trigger）：
-> 作為 GitHub Actions 不可用時的 fallback，也是 musl 靜態產物的唯一來源；`codeberg.org/lawlietr/redlib`
-> 的 tag 因此會刻意落後。兩條路徑的**來源內容必須一致**（都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
+> 本地 Forgejo（`.forgejo/`，多架構 musl）**保留但只手動觸發**（2026-10-21 移除 `push` trigger），
+> 作為 GitHub Actions 不可用時的 fallback 與 musl 產物來源；`codeberg.org/lawlietr/redlib` 的 tag
+> **由同一條 GitHub CI 的 `mirror-codeberg` job 鏡像維護**（見 §9），不再靠 12 機重新建置。兩條路徑的**來源內容必須一致**（都讀 `redlib-prs.txt`，見 `design/upstream-pr-bake.md`）。
 > 本地 `docker build` + 起容器也是支援的測試途徑（只產本機架構；命令與 smoke 清單見 README 的「本地編譯與測試」節）。
 > 作業層級以 `concurrency: ghcr-publish` 串行，避免 manifest merge 混到不同 commit 的兩個架構。
 
@@ -82,7 +82,8 @@ permissions:
   （`+crt-static`）。不用 QEMU、不用交叉工具鏈。
 - **Codeberg / 本地 Forgejo 端**：musl 原生交叉編譯 + `Dockerfile.pack`（見 `design/multi-arch-build.md`）。
 - ⚠ 兩條路的 **binary 是不同產物**（musl 靜態 vs glibc 靜態），同一 commit 的 **digest 不會相同**；
-  跨 registry 比對時比 tag 與行為，不比 digest。
+  跨 registry 比對時比 tag 與行為。**例外（2026-10-21 起）**：codeberg 的 tag 若是被 §9 的鏡像复制過去的，
+  內容與 digest **完全相同**；只有手動 musl 建置會讓 digest 分岔。
 
 ### arm64 的三條路（2026-10-21 選第 3 條，已上線）
 1. **交叉編譯**（ubuntu-latest 上装 aarch64 musl 交叉工具鏈，沿用 `.forgejo/` 的 musl 邏輯）——
@@ -125,3 +126,22 @@ permissions:
 | 來源內容 | 同一份 `redlib-prs.txt` bake | 同一份 `redlib-prs.txt` bake |
 | guard | `if: github.server_url == 'https://github.com'` | 無（只在本地 Forgejo 跑） |
 | 磁碟紀律 | 不需要（GitHub runner 磁碟大） | 需要（30GB host，disk_guard + prune） |
+
+## 9. 鏡像到 codeberg.org（`mirror-codeberg` job，2026-10-21 新增）
+
+**為什麼需要**：編譯工作改到 GitHub Actions 之後，12 機不再自動建置，但
+`codeberg.org/lawlietr/redlib` 的 tag 仍要跟著更新。做法是 **registry 側的 copy**，不是重建：
+
+- 腳本：`.github/scripts/mirror_to_codeberg.sh`，job `mirror-codeberg`（`needs: manifest`）。
+- 指令：`docker buildx imagetools create -t codeberg.org/lawlietr/redlib:<tag> ghcr.io/lawlietr/redlib:<tag>`，
+  覆蓋 `latest`、`<git-sha>`、`amd64`、`arm64` 四個 tag（含 manifest list 的 child 引用）。
+- 特性：**不跑 cargo、不用 QEMU**，只搬 ~13MB 的 blob；因為全部 content-addressed，
+  **鏡像後的 digest 與 ghcr 一致**（腳本结尾會比對 child digest 並打印）。
+- 認證：需要 GitHub repo secret **`CODEBERG_PAT`**（Codeberg PAT，`write:packages`）。
+  username 用帳號原樣 `Lawlietr`，registry 路径是小寫 `lawlietr`（與 `.forgejo/` 那條路同一個不對稱）。
+  登入帶 6 次退避重試（Codeberg registry 邊緣偶發會掐 auth 請求）。
+- **缺 secret 就 exit 1**，不會靜默略過 —— 這是刻意設計，避免「鏡像悄悄不更新」。
+- ⚠ 若有人**手動**跑 `.forgejo/workflows/build.yml`（musl 產物），它會把這四個 tag 指向不同的 digest；
+  下一次 GitHub 建置會再把鏡像蓋回來。要長期保留 musl 版請另用 tag 前綴，不要共用 `latest`。
+- 對 fork 的影響：鏡像目標是寫死的 `codeberg.org/lawlietr/redlib`（我們的 namespace），
+  fork 若沒有對應 secret 就會在該 job 失敗；fork 要嘛加自己的 secret、要嘛把該 job 註解掉。

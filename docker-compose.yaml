@@ -5,9 +5,9 @@
 #          docker compose up -d --pull always --no-build
 #        # pin a build instead: REDLIB_IMAGE=ghcr.io/lawlietr/redlib:<git-sha>
 #
-#   A2) fallback registry (kept in sync only by a MANUAL Forgejo workflow run now;
-#       its binaries are musl-static, the GitHub ones are glibc-static — do not
-#       expect identical digests):
+#   A2) the Codeberg registry, mirrored by the same CI run with a registry-side copy
+#       (identical tags and digests). Only a MANUAL Forgejo workflow run would put
+#       musl-static binaries on those tags instead:
 #        REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest \
 #          docker compose up -d --pull always --no-build
 #
@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     # Default = the locally built tag. Set REDLIB_IMAGE to a registry reference
     # (primary: ghcr.io/lawlietr/redlib:latest, or a <git-sha> pin for reproducibility;
-    # fallback: codeberg.org/lawlietr/redlib:latest, updated only by a manual workflow run)
+    # mirrored copy: codeberg.org/lawlietr/redlib:latest, kept current by the same CI run)
     # to run the CI image instead of building.
     image: ${REDLIB_IMAGE:-redlib}
     container_name: redlib

@@ -2,8 +2,10 @@
 
 > **2026-10-21 政策變更：這條路不再是主要發佈路徑，但 workflow 與 runner 完整保留。**
 > `.forgejo/workflows/build.yml` 的 `push` trigger 已移除，現在**只有 `workflow_dispatch`**（可填 reason）。
-> 保留理由：(1) GitHub Actions 不可用時的 fallback；(2) musl 靜態產物的唯一來源；(3) 需要時把
-> `codeberg.org/lawlietr/redlib` 的 tag 追平（否則該登錄區的 tag 會落後，這是刻意設計）。
+> 保留理由：(1) GitHub Actions 不可用時的 fallback；(2) 需要 musl 靜態產物時的唯一來源。
+> `codeberg.org/lawlietr/redlib` 的 tag **正常情況下由 GitHub CI 的 `mirror-codeberg` job 鏡像維護**
+> （digest 與 ghcr 相同，見 `design/github-actions-workflow.md` §9），不需要這裡重建。
+> ⚠ 手動跑這條會把那些 tag 指向 musl 產物（digest 分岔），直到下一次鏡像蓋回來。
 > 主要發佈路徑與 ghcr 細節：`design/github-actions-workflow.md`。
 >
 > **2026-09-18 已改完並上線**：`CODEBERG_PAT`（repo-level）已設、首次完整 build+push 成功，

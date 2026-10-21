@@ -20,7 +20,7 @@ A lightweight Reddit alternative, deployed via Docker.
 > |------|----------|
 > | This repo (Docker config, CI, docs) | **https://codeberg.org/Lawlietr/redlib_docker** (mirrored at https://github.com/Lawlietr/redlib_docker) |
 > | **Prebuilt container images (primary, since 2026-10-21)** | **`ghcr.io/lawlietr/redlib`** — built automatically by **GitHub Actions**, dual-arch `linux/amd64` + `linux/arm64`; tags `latest` and a pinnable `<git-sha>`; public, **pulls anonymously** |
-> | Fallback images | `codeberg.org/lawlietr/redlib` (musl-static builds; **updated only by a manual run** of `.forgejo/workflows/build.yml`, so its tags deliberately lag the primary path) |
+> | Mirrored images | `codeberg.org/lawlietr/redlib` — **mirrored by GitHub Actions with a registry-side copy** (no rebuild), so tags **and digests match ghcr**; musl-static builds only appear when you run `.forgejo/workflows/build.yml` by hand (which temporarily overwrites those tags until the next mirror) |
 >
 > The two names differ on purpose: the repo is `Lawlietr/redlib_docker`, while image paths are
 > lowercase (`lawlietr/redlib`) — required by the ghcr registry, and the Codeberg namespace is lowercase too.
@@ -35,7 +35,8 @@ A lightweight Reddit alternative, deployed via Docker.
 - The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
 - **From 2026-10-21 all images are compiled by GitHub Actions and pushed to the primary registry
   `ghcr.io/lawlietr/redlib`** (dual-platform `linux/amd64` + `linux/arm64`). The local Forgejo runner
-  pipeline is **kept but no longer triggers on push** (manual-only fallback and the musl-static producer);
+  pipeline is **kept but no longer triggers on push** (manual-only fallback and the musl-static producer), while the
+  **Codeberg registry is kept current by a mirror job in the same CI run** (registry-side copy; tags and digests match);
   local `docker build` is supported as well, for testing changes and offline debugging.
 
 ## Deployment
@@ -54,7 +55,7 @@ docker run -d \
 
 # Pin a build with the <git-sha> tag instead:
 #   docker pull ghcr.io/lawlietr/redlib:d572b2e
-# Fallback registry (only updated by a manual workflow run; musl-static builds):
+# Same images are mirrored into the Codeberg registry (identical tags and digests):
 #   docker pull codeberg.org/lawlietr/redlib:latest
 ```
 
@@ -100,7 +101,7 @@ docker compose up -d
 > # A) run the CI-built image (primary path: GitHub Actions -> ghcr)
 > REDLIB_IMAGE=ghcr.io/lawlietr/redlib:latest docker compose up -d --pull always --no-build
 >
-> # A2) fallback registry (only refreshed when .forgejo/workflows/build.yml is run manually)
+> # A2) Codeberg registry (mirrored by the same CI run; identical tags and digests)
 > REDLIB_IMAGE=codeberg.org/lawlietr/redlib:latest docker compose up -d --pull always --no-build
 >
 > # B) build locally from source (this repo as the context for the root `Dockerfile`, bake included)
@@ -162,7 +163,7 @@ Full list: https://github.com/redlib-org/redlib/blob/main/.env.example
 | Registry | Role | `latest` | `<git-sha>` | per-arch tags |
 |---|---|---|---|---|
 | `ghcr.io/lawlietr/redlib` | **primary** (GitHub Actions, runs on push; glibc-static builds) | manifest list | manifest list | `amd64` / `arm64` |
-| `codeberg.org/lawlietr/redlib` | **fallback** (musl-static builds; **manual runs only**, tags lag on purpose) | manifest list | manifest list | `amd64` / `arm64` |
+| `codeberg.org/lawlietr/redlib` | **mirror** (the CI copies it with `imagetools`, registry-side; content and digests match ghcr) | manifest list | manifest list | `amd64` / `arm64` |
 
 | Tag | Description |
 |-----|-------------|
@@ -170,10 +171,10 @@ Full list: https://github.com/redlib-org/redlib/blob/main/.env.example
 | `<git-sha>` | Reproducible version pinned to a git commit SHA (multi-platform) |
 | `amd64` / `arm64` | Single-architecture images, mainly used for the CI manifest merge; pulling `latest` or `<git-sha>` picks the right architecture automatically |
 
-> ⚠ **The two registries do not share digests**: the `.forgejo/` pipeline publishes musl-static
-> binaries while the GitHub pipeline publishes glibc + `+crt-static` ones (both run on `scratch` and
-> behave the same, but they are not the same file). When switching registries compare tags, not digests.
-> Since 2026-10-21 the repository and the ghcr package are public, so **no token is needed to pull**.
+> ⚠ The Codeberg tags are now a **mirror** of the GitHub build, so **the same tag has the same digest in both
+> registries** and a digest pin works across them. **Exception**: a manual `.forgejo/workflows/build.yml` run
+> repoints those tags at musl-static builds (different digests) until the next CI build re-mirrors them.
+> Both registries are public, so **no token is needed to pull**.
 
 ## Can a fork build its own images easily?
 
@@ -230,9 +231,13 @@ The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest rou
   `codeberg.org/lawlietr/redlib` tags. The runner infrastructure and disk discipline (30GB host,
   `disk_guard.sh` + prune) are fully preserved: `design/forgejo-runner-workflow.md`,
   `design/forgejo-runner-deployment.md`, `design/multi-arch-build.md`.
-- ⚠ **`codeberg.org/lawlietr/redlib` tags will now lag behind** (no automatic rebuild). Run that workflow
-  by hand to resync, or switch to ghcr. The two registries ship different builds (musl vs glibc static):
-  **never compare digests** across them.
+- **`codeberg.org/lawlietr/redlib` is maintained by the same CI run**: after the manifest merge, the
+  `mirror-codeberg` job copies `:latest`/`:<git-sha>`/`:amd64`/`:arm64` over with
+  `docker buildx imagetools create` (verbatim, no rebuild, ~13MB), so tags and digests match.
+  That job needs the `CODEBERG_PAT` GitHub secret (`write:packages`) and **fails loudly when it is missing**
+  rather than skipping. Details: `design/github-actions-workflow.md` §9.
+- ⚠ A **manual** Forgejo (musl) build repoints the Codeberg tags at its own binaries until the next GitHub
+  build re-mirrors them.
 - How to verify each step: `design/error-triage-playbook.md`; per-feature regression list:
   `design/upstream-pr-bake.md` §7.
 

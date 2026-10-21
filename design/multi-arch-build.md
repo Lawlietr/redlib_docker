@@ -169,8 +169,9 @@ docker buildx imagetools create \
 
 ## 10. 風險 / 待辦
 - **2026-10-21：本檔描述的 `.forgejo/` 路徑改為「只手動觸發」**（保留 runner 與腳本，不刪）。
-  主要發佈路徑改由 GitHub Actions 承擔（原生 arm64 hosted runner，四 tag 對齊）；見
-  `design/github-actions-workflow.md`。本檔的 musl 交叉編譯設定仍是**手動 fallback 時的操作依據**，未失效。
+  編譯改由 GitHub Actions 承擔（原生 arm64 hosted runner），`codeberg.org/lawlietr/redlib` 的 tag 則由同一條
+  CI 的 **`mirror-codeberg` job 鏡像**（registry 側 copy，digest 相同）；見 `design/github-actions-workflow.md` §9。
+  本檔的 musl 交叉編譯設定仍是**手動 fallback / 刻意要 musl 產物時的操作依據**，未失效。
 
 - [x] **runner 工具鏈（script 層）**：`CXX_*`/`AR_*` 已補進 script（commit `fc555ee`）。
 - [ ] **擴建 runner Dockerfile 安裝工具鏈**（`apk add` cross-compiler + rustup + clang）

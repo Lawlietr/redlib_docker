@@ -94,3 +94,22 @@ jobs:
 
       - name: Merge and Push Manifest List
         run: bash .github/scripts/merge_manifest.sh
+
+  # Copy the freshly published ghcr images into the Codeberg registry, registry-side
+  # (no rebuild). The compile work lives here now, but codeberg.org/lawlietr/redlib
+  # must still carry the new build, so it is mirrored rather than rebuilt by the
+  # self-hosted runner. Requires the repo secret CODEBERG_PAT (write:packages);
+  # the job fails loudly when it is missing instead of quietly skipping.
+  # Details: design/github-actions-workflow.md §9.
+  mirror-codeberg:
+    if: ${{ github.server_url == 'https://github.com' }}
+    needs: manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Mirror to codeberg.org (imagetools copy)
+        env:
+          CODEBERG_PAT: ${{ secrets.CODEBERG_PAT }}
+        run: bash .github/scripts/mirror_to_codeberg.sh
