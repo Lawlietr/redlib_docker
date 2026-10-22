@@ -26,9 +26,10 @@
 - 細節：`design/error-triage-playbook.md` §7 末段。
 
 ## P1 — 上游未合併 PR 的 bake 鏈（Tier 1）
-- **做什麼**：把 6 支仍未 upstream 合併的上游 PR（#549/#542/#521/#560/#539/#592）bake 進建置來源；清單放 `redlib-prs.txt`（單一來源），套用邏輯放 `.build/apply_redlib_prs.sh`，由 `Dockerfile` 與 `.forgejo/scripts/build_and_push.sh` 共用。
+- **做什麼**：把 5 支仍未 upstream 合併的上游 PR（#549/#542/#521/#560/#539）bake 進建置來源；清單放 `redlib-prs.txt`（單一來源），套用邏輯放 `.build/apply_redlib_prs.sh`，由 `Dockerfile` 與 `.forgejo/scripts/build_and_push.sh` 共用。
+  > **已退役**：#592（貼文頁 403 繞行）於 2026-10-22 從 `redlib-prs.txt` 移除。上游 v0.40.0 以直接 commit `0a3e9cd` 實作等效 `%2f` 繞行（同碰 `src/client.rs`）；#592 作為 PR 從未合併，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故退役、thread-403 改由上游供應。見 `RELEASE_NOTES.md` 2026-10-22 段。
 - **為什麼**：2026-09-18「已全部併入 upstream main」的判斷錯誤（引用的 commit 是我們 build 內的本地 merge tip），upstream main 至今沒有這些改動 → 現行發佈映像少了 CMAF/rich:video 影片、預設 post sort 生效、lazy-load、分享連結、0 則留言 panic 修正。
-- **狀態**：本輪已完成 —— 文件更正、bake 鏈接回兩條 build 路徑、本地 x86-64 編譯驗證、GitHub Actions 編譯驗證。
+- **狀態**：本輪已完成 —— 文件更正、bake 鏈接回兩條 build 路徑、本地 x86-64 編譯驗證、GitHub Actions 編譯驗證（run #10，commit `0c5050d`，ghcr + Codeberg 已發布）。#592 已退役，剩 5 支。
 - **優先級**：P1（已修掉功能缺口，但含一處 breaking 行為需線上確認）。
 - 細節：`design/upstream-pr-bake.md`（§2 清單、§5 漂移重做、§7 驗證、§8 風險）。
 
@@ -64,6 +65,7 @@
 - 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩條探測 URL）與 §2 表格的 ⚠ 注記、`design/error-triage-playbook.md` §4.1（路由偵測手法）、`RELEASE_NOTES.md` 的 pre-existing known issue 段。
 
 ## 近期完成
+- 2026-10-22：**退役 bake 上游 #592（貼文頁 403 繞行）**。上游 v0.40.0（2026-10-22）以直接 commit `0a3e9cd fix: encode anonymous comments request paths` 實作等效 `%2f` 編碼繞行（同碰 `src/client.rs`）；#592 作為 PR 從未合併，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故從 `redlib-prs.txt` 移除，thread-403 改由上游供應。剩餘五支 bake（#549/#542/#521/#560/#539）照常。本輪仍是五支 clean merge、不碰 `Cargo.lock`；本地 build + smoke 全過（`/`、`/r/popular`、`/r/technology`、貼文頁皆 200、negative control 404、panic 0），GitHub Actions run #10（commit `0c5050d`）六 job 全綠並原樣鏡像到 Codeberg（digest 相同）。#592 仍是 workaround 不是 root fix，re-break 風險與 observable（`client.rs` 的 `Reddit blocked this request (403 Forbidden)…`）不變。文件同步：`redlib-prs.txt`、`design/upstream-pr-bake.md`（§2/§7/§8.8）、兩個 README、`RELEASE_NOTES.md`。
 - 2026-10-21：**鏡像機制上線**（`.github/scripts/mirror_to_codeberg.sh` + `mirror-codeberg` job）：GitHub 端編譯完、manifest 合併完之後，用 `docker buildx imagetools create` 把 `latest`/`<git-sha>`/`amd64`/`arm64` **原樣複製**到 `codeberg.org/lawlietr/redlib`（registry 側 copy，不重新編譯，blob 約 13MB，**digest 兩邊相同**）；缺 `CODEBERG_PAT` 時 exit 1 明確失敗。文件同步：`design/github-actions-workflow.md` 新增 §9、AGENTS.md、兩個 README 的 Tags/CI/CD/存放位置表、`docker-compose.yaml` 註解、`RELEASE_NOTES.md`。
 - 2026-10-21：**煙測上線並全綠**（run `39551016403`，commit `51d0d7e`）：build (amd64)/build (arm64)/manifest/**smoke**/**mirror-codeberg** 五個 job 全成功；smoke 在 runner 上抓到 amd64 與 arm64 binary 皆 `statically linked`、`/` 200 62,216B、`/r/gaming` 200 79,425B、`/r/AskReddit/top` 200 38,012B，qemu 下 arm64 容器 `/` 也回 200；mirror 結尾打印兩邊 child digest 完全相同（`12105bec…` amd64、`d77e9225…` arm64）。第一次嘗試（run `39550258322`）失敗純粹是 smoke job 漏了 `actions/checkout`。
 - 2026-10-21：**musl 退場為產品線**（workflow 與 runner 保留不變）。實測對照：ghcr 的 glibc `+crt-static`（`readelf -d` NEEDED=0、13.5MB）與 Codeberg 舊 musl 版（`15cc3c1`、13.2MB）在同一台 x86_64 上 `/`、`/r/AskReddit/top`、`/r/gaming` 全 200 且大小相同、log 無解析器錯誤 —— 靜態 glibc 在 `scratch` 的 NSS/DNS 疑慮未發生，大小也無差異，而 arm64 hosted runner 讓「x86 交叉編 arm64」這個 musl 的唯一理由消失。文件同步把 musl 降調為 `.forgejo/` 備援路的實作細節（兩個 README、AGENTS.md、`design/multi-arch-build.md`、`design/forgejo-runner-workflow.md`、`RELEASE_NOTES.md`），不建平行 tag。

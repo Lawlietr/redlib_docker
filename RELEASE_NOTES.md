@@ -5,6 +5,40 @@ English only (this file is the image changelog consumers read; the design docs i
 
 ---
 
+## 2026-10-22 — retire redlib PR #592 from the bake (upstream ships the same thread-403 workaround)
+
+**What changed.** The bake list (`redlib-prs.txt`) no longer bakes upstream
+[redlib PR #592](https://github.com/redlib-org/redlib/pull/592). The remaining
+baked PRs are the five: #549, #542, #521, #560, #539.
+
+**Why #592 was retired.** #592 was a workaround for the thread-page 403 block
+(described in the 2026-10-21 note below): it percent-encodes the single slash
+joining the subreddit to `comments` so Reddit's edge stops matching the literal
+`/r/<sub>/comments/...` path. On 2026-10-22 upstream released **v0.40.0**, which
+carries an **equivalent direct commit** (`0a3e9cd fix: encode anonymous comments
+request paths`) that percent-encodes the same slash. #592 as a PR was never
+merged upstream, but keeping it in our bake would only conflict with `0a3e9cd`
+in `src/client.rs` for no functional gain — both do exactly the same thing.
+So #592 was removed from the list and the thread-403 workaround is now supplied
+by upstream `0a3e9cd`.
+
+**No behaviour change.** The thread pages #592 used to restore keep loading; the
+mechanism is identical (a `%2f` encoding workaround, not a root fix). The same
+caveats from the 2026-10-21 note still apply: it is a stopgap, the re-break
+trigger is Reddit normalising `%2f` back to `/`, and the signal that it has died
+is the explicit `Reddit blocked this request (403 Forbidden): …` string, not a
+parse error. Nothing here makes redlib able to authenticate as a session.
+
+**Image.** Built and published by GitHub Actions into `ghcr.io/lawlietr/redlib`
+and mirrored identically to `codeberg.org/lawlietr/redlib` (same tags and
+digests). Tag carrying this change: `<git-sha> 0c5050d` (`latest` is rolling).
+
+**Rolling it back.** Re-add the `592 …` line to `redlib-prs.txt` and rebuild, or
+run an image from an earlier `<git-sha>` tag. Re-adding #592 on top of
+`0a3e9cd` will conflict in `src/client.rs` and must be resolved manually.
+
+---
+
 ## 2026-10-21 — thread pages are loading again (workaround, **not** a fix)
 
 **Affected**: all instances. Symptom was that clicking any post opened an error
