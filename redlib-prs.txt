@@ -4,8 +4,14 @@
 # a4d36e9: none is an ancestor of main and none is patch-applied).
 # Consumed by: Dockerfile (local/CI amd64 build) and
 # .forgejo/scripts/build_and_push.sh (multi-arch build). Merge order = file
-# order; all six apply cleanly against current main with a plain --no-ff
+# order; all five apply cleanly against current main with a plain --no-ff
 # merge (no -X ours needed, so nothing is silently dropped).
+#
+# RETIRED: #592 (thread pages: encode the /comments slash) was removed after
+# v0.40.0: upstream main now carries an equivalent direct commit
+# `0a3e9cd fix: encode anonymous comments request paths` (percent-encodes the
+# subreddit/comments slash as %2F, same workaround). Keeping #592 would conflict
+# in src/client.rs for no gain. The other five remain unmerged upstream.
 #
 # Format: <PR number> <head SHA at review time — warns if the PR was force-pushed>
 # Rationale, review tiers, re-analysis procedure: design/upstream-pr-bake.md
@@ -15,4 +21,3 @@
 521 93c03bb1c3ea7b7ff287227dc0726f5f325d1fb9   # default post sort applied without saving
 560 7a284d301c5fecb657a6330e18bf461d5f679aab   # /u/:name/s/:id share links
 539 514202ad1d1667cb066457bb637535de52eeb2e2   # lazy-load post images (drops svg wrapper)
-592 1e9515eab8d0c0331a5dc23de7c1d193ab1465af   # thread pages: encode the /comments slash (WORKAROUND, see design/upstream-pr-bake.md §8.8)

@@ -127,6 +127,15 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 我們推送的 `latest` 是某個時間點的快照，你自己 build 會得到「同一套構建流程 + 當天的 redlib 版本」，
 > 與我們的映像不保證 bit-for-bit 相同。需要固定版本時：拉 registry 的 **`<git-sha>` tag**，
 > 或 `--build-arg REDLIB_BRANCH=<commit 或 tag>` pin 住。
+>
+> **上游狀態（v0.40.0，2026-10-22 核對）**：目前 bake 的五支 PR **全部仍未被上游以 PR 形式合併**，
+> 一律照 bake。其中 #592（thread 頁 403 的 workaround）在上游 `main` 已有一份**等效的直接 commit**
+> （`0a3e9cd fix: encode anonymous comments request paths`，把 subreddit 與 `comments` 之間的斜線編成 `%2F`）。
+> 本 repo 只做「合併與打包」而非 fork，判定標準是「該 PR 有沒有被上游合併」；#592 作為 PR 從未整合、
+> 但上游已用同一招補上，保留它只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故**已將 #592 從 bake 清單退役**，
+> 其餘五支（#549、#542、#521、#560、#539）v0.40.0 一個都沒含，正常 bake。#592 的 thread-403 workaround
+> 因此改由上游版本供應——它仍是 workaround 不是 root fix，re-break 風險與 observable（`client.rs` 的
+> block / 解析錯誤）不變。
 
 ## 映像標籤（Tags）
 

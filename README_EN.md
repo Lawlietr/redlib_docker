@@ -134,6 +134,17 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > yields "the same build process + that day's redlib version", not a bit-for-bit identical image.
 > To pin a fixed version, pull the registry's **`<git-sha>` tag**, or use
 > `--build-arg REDLIB_BRANCH=<commit or tag>`.
+>
+> **Upstream status (v0.40.0, verified 2026-10-22)**: the five bake PRs currently in the list are
+> **still not merged upstream as PRs**, so all keep being baked. #592 (the thread-page 403 workaround)
+> has an **equivalent direct commit** in upstream `main` (`0a3e9cd fix: encode anonymous comments request
+> paths`, percent-encoding the slash between subreddit and `comments` as `%2F`). This repo does
+> "merge-and-packaging", not a fork, and the criterion is "was the PR merged upstream"; #592 as a PR was
+> never integrated, but upstream now supplies the same workaround, and keeping #592 would only conflict with
+> `0a3e9cd` in `src/client.rs` for no gain — so **#592 has been retired from the bake list**. The remaining
+> five (#549, #542, #521, #560, #539) are not in v0.40.0 at all and bake as normal. #592's thread-403
+> workaround is now supplied by upstream — it remains a workaround, not a root fix, with the same
+> re-break risk and observable (block / parse error in `client.rs`).
 
 ## Environment Variables
 
