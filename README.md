@@ -23,12 +23,12 @@
 > 名稱差異要注意：repo 是 `Lawlietr/redlib_docker`（Codeberg 上大小寫自如顯示），registry 映像路徑是**小寫** `lawlietr/redlib`（registry 要求小寫，兩個登錄區都如此）。
 
 - 建置時 clone upstream `main`（https://github.com/redlib-org/redlib），再把 **仍未合併進 upstream 的上游 PR** bake 進去：
-  清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539/#592 → CMAF 影片與 `rich:video`、
+  清單在 `redlib-prs.txt`（目前 #549/#542/#521/#560/#539/#599 → CMAF 影片與 `rich:video`、
   0 則留言 permalink panic、預設文章排序生效、使用者文章分享連結（**#560 的 id 條件有錯，現行 id 用不了**，見 `design/upstream-pr-bake.md` §8.9）、圖片 lazy-load、
-  貼文頁路由編碼（**繞行 Reddit 封鎖，非根治**，見 `RELEASE_NOTES.md`）），
+  貼文頁留言改從 Reddit 前端的 HTML fragment 取得（**繞行 Reddit 對 comments API 的封鎖，非根治，且不完整**，見下方「上游狀態」與 `RELEASE_NOTES.md`）），
   由 `.build/apply_redlib_prs.sh` 套用。判斷依據、分級與重新評估程序：`design/upstream-pr-bake.md`。
   （#509 hyper-tls 已被 main 的 wreq 遷移 #544 取代，不 bake。）
-- 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB）。
+- 產物為全靜態 binary，最終映像基於 `scratch`（約 13.5MB；含 #599 的 HTML parser 相依後約 14.8MB）。
 - **未來鏡像一律由 GitHub Actions 編譯並推送**到主登錄區 **`ghcr.io/lawlietr/redlib`**（雙平台
   `linux/amd64` + `linux/arm64`），**隨後自動鏡像到 `codeberg.org/lawlietr/redlib`**（registry 側 copy、不重新編譯，
   tag 與 digest 兩邊相同）。本地 Forgejo runner 那條路**保留**但改為**只手動觸發**（GitHub 整天不可用時的緊急備援，不是一個產品線）；
@@ -128,7 +128,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 與我們的映像不保證 bit-for-bit 相同。需要固定版本時：拉 registry 的 **`<git-sha>` tag**，
 > 或 `--build-arg REDLIB_BRANCH=<commit 或 tag>` pin 住。
 >
-> **上游狀態（v0.40.0，2026-10-22 核對）**：目前 bake 的五支 PR **全部仍未被上游以 PR 形式合併**，
+> **上游狀態（v0.40.0，2026-10-22 核對；當時五支，2026-10-23 起六支，見下一段）**：當時 bake 的五支 PR **全部仍未被上游以 PR 形式合併**，
 > 一律照 bake。其中 #592（thread 頁 403 的 workaround）在上游 `main` 已有一份**等效的直接 commit**
 > （`0a3e9cd fix: encode anonymous comments request paths`，把 subreddit 與 `comments` 之間的斜線編成 `%2F`）。
 > 本 repo 只做「合併與打包」而非 fork，判定標準是「該 PR 有沒有被上游合併」；#592 作為 PR 從未整合、
@@ -136,6 +136,39 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 其餘五支（#549、#542、#521、#560、#539）v0.40.0 一個都沒含，正常 bake。#592 的 thread-403 workaround
 > 因此改由上游版本供應——它仍是 workaround 不是 root fix，re-break 風險與 observable（`client.rs` 的
 > block / 解析錯誤）不變。
+>
+> **2026-10-23 追加 bake：#599（⚠ 未完全解決問題）**
+>
+> 上面那個 `%2F` 編碼繞行**已被 Reddit 識破**：正式實例重新出現
+> `Failed to parse page JSON data: expected value at line 1 column 1 | /r/<sub>/comments/<id>/<slug>/.json?&raw_json=1`，
+> 而 upstream `main` 自 v0.40.0（HEAD `ba116c1`）之後沒有任何新 commit，也就是**上游當時完全沒修**。
+> 於是 bake 上游 [#599](https://github.com/redlib-org/redlib/pull/599)：它不再碰 comments API，
+> 文章改由 `/by_id/t3_<id>.json` 取，**留言改抓 Reddit 前端自己用的 `/svc/shreddit/comments/...` HTML fragment**，
+> 用 `scraper` 解析回原本 JSON 的形狀，所以 `parse_comments` 與模板不用改。
+>
+> 本地 x86-64 build + 起容器實測通過（貼文頁 200、留言有正文、permalink + `?context=3` 正常、留言排序真的生效、
+> 0 則留言不 panic、panic 0）。**但它只把「整頁壞掉」換成「能用但有損」，以下都是已知代價：**
+>
+> 1. **仍是 workaround，而且比 #592 更脆**：打的是 Reddit **未文件化的內部 fragment 端點**，Reddit 關掉就全壞；
+>    該 PR 是 **AI 生成、0 review、上游 CI 從沒跑過**（head `0db637cd`，0 個 check runs）。
+> 2. **反限流很脆**：captcha 偵測靠比對字面 `<title>Reddit - Prove your humanity</title>`，再加上 429 與
+>    `x-ratelimit-remaining < 20` 就輪替 cookie session。字串一改，challenge 頁會被當成正常留言內容解析。
+> 3. **請求放大**：每個未 cache 的貼文頁要 **1–31 個** Reddit 請求（本機實測**冷 3.07s / 熱 0.019s**，listing 對照 0.74s），
+>    而 cache 只有 30 秒；shreddit 的 cookie session 是 **process-global**，代表同一實例的所有訪客共用一份配額，
+>    人一多就會互相吃光（上游 #597 / #446 已在抱怨 rate limit）。踩到時的訊息：
+>    `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`
+> 4. **留言上限 200 則**：多出來的部分變成「More replies」殘根（本機實測大討論串剩 93–106 個未展開殘根）。
+> 5. **留言少了 author flair 與 awards**（fragment 裡沒有這些欄位）；quarantined subreddit 的 shreddit 行為未測。
+> 6. **subreddit 名稱不再被驗證**：文章改走 `by_id`，而它不看 subreddit → 錯的 sub 加上對的 post id 也會 200 並顯示別篇文章
+>    （本機實測 `/r/__totally_wrong_sub__/comments/1xbt0if/x/` 回 200、內容是 r/masseffect 那篇）。上游 `main` 對這種 URL 是 404。
+> 7. **不在範圍**：首頁 feed 的 parse error（上游 #589）與 Anubis PoW 擋程式化存取（#567）照舊；
+>    而且整套仍依賴 `by_id/t3_<id>.json` 沒被封 —— 一旦被封，貼文頁再度全滅。
+> 8. 體積與供給面：新增 25 個 crate（`scraper`/`html5ever`/`cssparser`/`phf`…），映像 13.5MB → 14.8MB。
+>
+> **再壞時要 grep 的 observable**（照 `design/error-triage-playbook.md`）：
+> `Reddit returned <status> | /svc/shreddit/...`、`Reddit is rate limiting comment requests...`、
+> `Refusing to fetch non-shreddit path`，或舊的那串 parse error（代表 `by_id` 也被封）。
+> 分級與判定依據：`design/upstream-pr-bake.md` §2、§8.12。
 
 ## 映像標籤（Tags）
 
@@ -200,15 +233,16 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 
 ## 更新說明（Release notes）→ `RELEASE_NOTES.md`
 
-完整 changelog 在 **`RELEASE_NOTES.md`**（英文）。最近一輪（2026-10-21）要點：
+完整 changelog 在 **`RELEASE_NOTES.md`**（英文）。最近兩輪要點：
 
-- 貼文頁已恢復：bake 上游 #592，把 `/r/<sub>` 與 `comments` 之間那一個 slash 編碼成 `%2f`，
-  避開 Reddit 對匿名 client 的**路徑規則**封鎖；同時把區塊錯誤改成明確的 403 訊息。
-- ⚠ **這是暫緩之計，不是根治**：Reddit 的政策是把這類資料推向登入後才開放。
-  一旦 Reddit 開始 normalise `%2f`，貼文頁會**再度全數失效**；屆時看到的是
-  `Reddit blocked this request (403 Forbidden): …`，不是 parse error。
-  重啟容器（換 token）無效 —— 封鎖是按路徑，不是按 token。
-- 同一事件的上游 #589（首頁 feed parse error）與 #567（Anubis PoW）**不在這輪修正範圍**。
+- **2026-10-23 — bake #599，貼文頁重新有留言**：留言不再走 comments API，改抓 Reddit 前端的
+  `/svc/shreddit/comments/...` HTML fragment 重建。⚠ **不完整、非根治**：留言上限 200 則、少了 author flair
+  與 awards、每個未 cache 的貼文頁吃 1–31 個請求（冷開 3s）、shreddit cookie session 全實例共用、
+  subreddit 名稱不再被驗證，而且打的是未文件化的內部端點 —— 逐條說明見上方「上游狀態」與 `RELEASE_NOTES.md`。
+- **2026-10-22 — #592 退役**：上游 v0.40.0 以直接 commit `0a3e9cd` 供應同等的 `%2F` 編碼繞行，保留 #592 只會衝突。
+- ⚠ **2026-10-21 那輪的 `%2f` 編碼繞行已失效**：Reddit 已把編碼後的路徑也一起擋掉（實測：正式實例的貼文頁又回到 parse error）。
+  重啟容器（換 token）從來就不是解法 —— 封鎖是按路徑，不是按 token。
+- 同一事件的上游 #589（首頁 feed parse error）與 #567（Anubis PoW）**不在修正範圍**。
 
 ## CI/CD
 
@@ -275,6 +309,10 @@ docker logs redlib-local 2>&1 | grep -ci panic   # 要 0
   用本 repo 的 compose 時記得 `--no-build`（見上方 A) 模式），否則 `up -d` 會用本地 build 的產物。
 - **build 時 merge 衝突 / `warning: PR #<n> head moved`**：上游或 PR 漂移，
   照 `design/upstream-pr-bake.md` §5 重新評估 `redlib-prs.txt`。
+- **貼文頁又壞 / 留言變空 / 出現 rate-limit 訊息**：先分清楚是哪一層壞 ——
+  `Reddit returned <status> | /svc/shreddit/...`（#599 的 fragment 端點被擋）、
+  `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`（cookie session 配額被吃光）、
+  舊的 `Failed to parse page JSON data...`（連 `by_id` 也被封）。溯源 SOP：`design/error-triage-playbook.md`。
 
 ## 專案資訊
 

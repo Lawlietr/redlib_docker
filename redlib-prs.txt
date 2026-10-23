@@ -21,3 +21,4 @@
 521 93c03bb1c3ea7b7ff287227dc0726f5f325d1fb9   # default post sort applied without saving
 560 7a284d301c5fecb657a6330e18bf461d5f679aab   # /u/:name/s/:id share links
 539 514202ad1d1667cb066457bb637535de52eeb2e2   # lazy-load post images (drops svg wrapper)
+599 0db637cd80d40f16bd1eb024f40966ad71e96455   # EXPERIMENT (not pushed/published): load comments from shreddit HTML fragments

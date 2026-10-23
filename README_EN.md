@@ -26,13 +26,14 @@ A lightweight Reddit alternative, deployed via Docker.
 > lowercase (`lawlietr/redlib`) — required by the ghcr registry, and the Codeberg namespace is lowercase too.
 
 - The build clones upstream `main` (https://github.com/redlib-org/redlib) and then bakes the upstream PRs that are **still not merged upstream**:
-  the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539/#592 → CMAF video + `rich:video`,
+  the list lives in `redlib-prs.txt` (currently #549/#542/#521/#560/#539/#599 → CMAF video + `rich:video`,
   the 0-comment permalink panic, default post sort taking effect, user post share links
   (**#560's id-length condition is wrong, so they still do not work** — see `design/upstream-pr-bake.md` §8.9), lazy-loaded images,
-  thread-page route encoding — **a workaround for Reddit's block, not a fix**, see `RELEASE_NOTES.md`),
+  and comments rebuilt from Reddit's own frontend HTML fragments — **a workaround for Reddit's block on the
+  comments API, not a fix, and not a complete one**; see the "Upstream status" note below and `RELEASE_NOTES.md`),
   applied by `.build/apply_redlib_prs.sh`. Evidence, review tiers and the re-review procedure: `design/upstream-pr-bake.md`.
   (#509 hyper-tls is superseded by the wreq migration on `main` (#544) and is not baked.)
-- The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB).
+- The artifact is a fully static binary; the final image is based on `scratch` (~13.5MB; ~14.8MB once #599's HTML parser dependencies are in).
 - **From 2026-10-21 all images are compiled by GitHub Actions and pushed to the primary registry
   `ghcr.io/lawlietr/redlib`** (dual-platform `linux/amd64` + `linux/arm64`). The local Forgejo runner
   pipeline is **kept but no longer triggers on push** (manual-only emergency fallback), while the
@@ -135,8 +136,8 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > To pin a fixed version, pull the registry's **`<git-sha>` tag**, or use
 > `--build-arg REDLIB_BRANCH=<commit or tag>`.
 >
-> **Upstream status (v0.40.0, verified 2026-10-22)**: the five bake PRs currently in the list are
-> **still not merged upstream as PRs**, so all keep being baked. #592 (the thread-page 403 workaround)
+> **Upstream status (v0.40.0, verified 2026-10-22 — five PRs then, six since 2026-10-23, see the note below)**:
+> the five bake PRs in the list at that time were **still not merged upstream as PRs**, so all kept being baked. #592 (the thread-page 403 workaround)
 > has an **equivalent direct commit** in upstream `main` (`0a3e9cd fix: encode anonymous comments request
 > paths`, percent-encoding the slash between subreddit and `comments` as `%2F`). This repo does
 > "merge-and-packaging", not a fork, and the criterion is "was the PR merged upstream"; #592 as a PR was
@@ -145,6 +146,49 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > five (#549, #542, #521, #560, #539) are not in v0.40.0 at all and bake as normal. #592's thread-403
 > workaround is now supplied by upstream — it remains a workaround, not a root fix, with the same
 > re-break risk and observable (block / parse error in `client.rs`).
+>
+> **Added bake on 2026-10-23: #599 (⚠ it does not fully solve the problem)**
+>
+> The `%2F` encoding workaround above **has since been defeated by Reddit**: our production instance started
+> returning `Failed to parse page JSON data: expected value at line 1 column 1 | /r/<sub>/comments/<id>/<slug>/.json?&raw_json=1`
+> again, while upstream `main` has **no commits after v0.40.0** (HEAD `ba116c1`) — i.e. upstream had not fixed it at all.
+> So we bake upstream [#599](https://github.com/redlib-org/redlib/pull/599): it stops touching the comments API at all.
+> The post is fetched from `/by_id/t3_<id>.json`, and **comments are taken from the HTML fragments Reddit's own frontend
+> uses** (`/svc/shreddit/comments/...`), parsed back into the original JSON shape with `scraper`, so `parse_comments`
+> and the templates need no changes.
+>
+> A local x86-64 build plus a running container passed (post page 200 with real comment bodies, permalink +
+> `?context=3` works, comment sorting really takes effect, 0-comment posts do not panic, panic count 0).
+> **But it only turns "the whole page is broken" into "works with losses" — these are the known costs:**
+>
+> 1. **Still a workaround, and more fragile than #592**: it relies on Reddit's **undocumented internal fragment
+>    endpoint**; if Reddit switches it off, everything breaks again. The PR is **AI-generated, has 0 reviews, and
+>    upstream CI has never run it** (head `0db637cd`, 0 check runs).
+> 2. **Fragile anti-throttling**: captcha detection matches the literal `<title>Reddit - Prove your humanity</title>`,
+>    plus a 429 or `x-ratelimit-remaining < 20` rotates the cookie session. Change that string and the challenge page
+>    gets parsed as if it were comment content.
+> 3. **Request amplification**: every uncached post page costs **1–31** Reddit requests (measured locally:
+>    **3.07s cold / 0.019s hot**, listings 0.74s) and the cache lasts only 30 seconds; the shreddit cookie session is
+>    **process-global**, so every visitor of an instance shares one quota and they exhaust each other's budget
+>    (upstream #597 / #446 already complain about rate limits). The message when this bites:
+>    `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`
+> 4. **Comments are capped at 200**: the rest stay as "More replies" stubs (measured on big threads locally:
+>    93–106 unexpanded stubs left).
+> 5. **Comments lose author flair and awards** (those fields are not in the fragments); shreddit behaviour for
+>    quarantined subreddits is untested.
+> 6. **The subreddit name is no longer validated**: the post now comes from `by_id`, which ignores the subreddit →
+>    a wrong subreddit plus a valid post id still returns 200 and renders a different post (measured locally:
+>    `/r/__totally_wrong_sub__/comments/1xbt0if/x/` → 200 showing the r/masseffect post). Upstream `main` returns 404
+>    for such a URL.
+> 7. **Out of scope**: the front-page feed parse error (upstream #589) and Anubis PoW blocking programmatic access
+>    (#567) are unchanged; and the whole mechanism still depends on `by_id/t3_<id>.json` not being blocked —
+>    if that route gets blocked too, thread pages die completely again.
+> 8. Size and supply chain: 25 new crates (`scraper`/`html5ever`/`cssparser`/`phf`…), image 13.5MB → 14.8MB.
+>
+> **Observables to grep when it breaks again** (see `design/error-triage-playbook.md`):
+> `Reddit returned <status> | /svc/shreddit/...`, `Reddit is rate limiting comment requests...`,
+> `Refusing to fetch non-shreddit path`, or the old parse-error string (meaning `by_id` is blocked as well).
+> Tier and rationale: `design/upstream-pr-bake.md` §2, §8.12.
 
 ## Environment Variables
 
@@ -210,17 +254,20 @@ its own images without editing a single file.
 
 ## Release notes → `RELEASE_NOTES.md`
 
-The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the latest round (2026-10-21):
+The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the last two rounds:
 
-- Thread pages load again: upstream #592 is baked, percent-encoding the **single** slash between
-  `/r/<sub>` and `comments` (`/r/<sub>%2fcomments/…`) so it no longer matches Reddit's
-  path rule for anonymous clients; a blocked response now reports an explicit 403 message.
-- ⚠ **This is a stopgap, not a fix.** Reddit's direction is to require a logged-in session for
-  this data. If Reddit starts normalising `%2f`, thread pages **break again** — and the message
-  will then read `Reddit blocked this request (403 Forbidden): …`, not a parse error.
-  Restarting the container (rotating the OAuth token) does **not** help: the block is path-based.
-- Out of scope for this round (upstream says so explicitly): #589 (front-page feed parse errors)
-  and #567 (Anubis PoW blocking programmatic access).
+- **2026-10-23 — #599 baked, comments are back on thread pages**: comments no longer come from the comments API but
+  from Reddit's frontend `/svc/shreddit/comments/...` HTML fragments. ⚠ **Incomplete and not a root fix**: comments are
+  capped at 200, author flair and awards are missing, every uncached thread page costs 1–31 requests (3s cold),
+  one shreddit cookie session is shared by all visitors of an instance, the subreddit name is no longer validated,
+  and it targets an undocumented internal endpoint — point by point: the "Upstream status" note above and `RELEASE_NOTES.md`.
+- **2026-10-22 — #592 retired**: upstream v0.40.0 supplies the equivalent `%2F` encoding workaround as a direct commit
+  (`0a3e9cd`), so keeping #592 would only conflict.
+- ⚠ **The 2026-10-21 `%2f` encoding workaround is dead**: Reddit now blocks the encoded path as well (observed: thread
+  pages on the production instance were back to the parse error). Restarting the container (rotating the OAuth token)
+  was never a solution — the block is path-based, not token-based.
+- Out of scope (upstream says so explicitly): #589 (front-page feed parse errors) and #567 (Anubis PoW blocking
+  programmatic access).
 
 ## CI/CD
 
@@ -298,6 +345,11 @@ Worth knowing:
 - **Still the old build after "updating"**: `latest` is a rolling tag, so a host that already pulled it must
   `docker pull` again and recreate the container; with this repo's compose file remember `--no-build`
   (mode A above), otherwise `up -d` uses the locally built image.
+- **Thread pages broken again / comments come up empty / a rate-limit message appears**: work out which layer failed —
+  `Reddit returned <status> | /svc/shreddit/...` (the fragment endpoint #599 uses is blocked),
+  `Reddit is rate limiting comment requests. Try refreshing in a few seconds.` (the shared cookie session's quota is
+  used up), or the old `Failed to parse page JSON data...` (even `by_id` is blocked now).
+  Root-cause SOP: `design/error-triage-playbook.md`.
 
 ## Project Information
 

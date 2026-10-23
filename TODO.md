@@ -26,10 +26,10 @@
 - 細節：`design/error-triage-playbook.md` §7 末段。
 
 ## P1 — 上游未合併 PR 的 bake 鏈（Tier 1）
-- **做什麼**：把 5 支仍未 upstream 合併的上游 PR（#549/#542/#521/#560/#539）bake 進建置來源；清單放 `redlib-prs.txt`（單一來源），套用邏輯放 `.build/apply_redlib_prs.sh`，由 `Dockerfile` 與 `.forgejo/scripts/build_and_push.sh` 共用。
+- **做什麼**：把 6 支仍未 upstream 合併的上游 PR（#549/#542/#521/#560/#539/#599）bake 進建置來源；清單放 `redlib-prs.txt`（單一來源），套用邏輯放 `.build/apply_redlib_prs.sh`，由 `Dockerfile` 與 `.forgejo/scripts/build_and_push.sh` 共用。
   > **已退役**：#592（貼文頁 403 繞行）於 2026-10-22 從 `redlib-prs.txt` 移除。上游 v0.40.0 以直接 commit `0a3e9cd` 實作等效 `%2f` 繞行（同碰 `src/client.rs`）；#592 作為 PR 從未合併，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故退役、thread-403 改由上游供應。見 `RELEASE_NOTES.md` 2026-10-22 段。
 - **為什麼**：2026-09-18「已全部併入 upstream main」的判斷錯誤（引用的 commit 是我們 build 內的本地 merge tip），upstream main 至今沒有這些改動 → 現行發佈映像少了 CMAF/rich:video 影片、預設 post sort 生效、lazy-load、分享連結、0 則留言 panic 修正。
-- **狀態**：本輪已完成 —— 文件更正、bake 鏈接回兩條 build 路徑、本地 x86-64 編譯驗證、GitHub Actions 編譯驗證（run #10，commit `0c5050d`，ghcr + Codeberg 已發布）。#592 已退役，剩 5 支。
+- **狀態**：本輪已完成 —— 文件更正、bake 鏈接回兩條 build 路徑、本地 x86-64 編譯驗證、GitHub Actions 編譯驗證（run #10，commit `0c5050d`，ghcr + Codeberg 已發布）。#592 已退役；2026-10-23 起加回 #599，現為 6 支。
 - **優先級**：P1（已修掉功能缺口，但含一處 breaking 行為需線上確認）。
 - 細節：`design/upstream-pr-bake.md`（§2 清單、§5 漂移重做、§7 驗證、§8 風險）。
 
@@ -65,6 +65,7 @@
 - 細節：`design/upstream-pr-bake.md` §8.9（決定性的兩條探測 URL）與 §2 表格的 ⚠ 注記、`design/error-triage-playbook.md` §4.1（路由偵測手法）、`RELEASE_NOTES.md` 的 pre-existing known issue 段。
 
 ## 近期完成
+- 2026-10-23：**bake 上游 #599（贴文頁留言改從 shreddit HTML fragment 重建）**。背景：`0a3e9cd`（v0.40.0）的 `%2F` 繞行已被 Reddit 破掉 —— 線上實例 `/` 與 `/r/popular` 皆 200，但贴文頁 404 + `Failed to parse page JSON data…｜/r/<sub>/comments/<id>/<slug>/.json?&raw_json=1`；上游 main 自 v0.40.0（HEAD `ba116c1`）後零 commit → 上游完全沒修，#599 是 50 支 open PR 中唯一處理此事的（AI 生成、0 review、0 check runs）。先做**靜態分析**（diff 全文阅读、檔案重疊檢查、相依存在性、`git merge --no-ff` 兩序全 clean），再**本地 x86-64 build + 容器實測**：贴文頁 200 / 206 則正文留言、permalink + `?context=3` OK、留言排序三種集合不同、0 則留言不 panic、panic 0。**已知不完整**（留言 200 則上限、無 author flair/awards、每頁 1–31 請求、冷 3.07s / 熱 0.019s、shreddit cookie session 全實例共用、subreddit 名稱不再被驗證、映像 13.5→14.8MB）。文件同步：`redlib-prs.txt`（pin `0db637cd`）、兩個 README（上游狀態新段 + 故障排除）、`RELEASE_NOTES.md`（逐條 loss 表）、`design/upstream-pr-bake.md`（§2 表格與 merge 順序、§7 新增 #599 專屬項、§8.12）。
 - 2026-10-22：**退役 bake 上游 #592（貼文頁 403 繞行）**。上游 v0.40.0（2026-10-22）以直接 commit `0a3e9cd fix: encode anonymous comments request paths` 實作等效 `%2f` 編碼繞行（同碰 `src/client.rs`）；#592 作為 PR 從未合併，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故從 `redlib-prs.txt` 移除，thread-403 改由上游供應。剩餘五支 bake（#549/#542/#521/#560/#539）照常。本輪仍是五支 clean merge、不碰 `Cargo.lock`；本地 build + smoke 全過（`/`、`/r/popular`、`/r/technology`、貼文頁皆 200、negative control 404、panic 0），GitHub Actions run #10（commit `0c5050d`）六 job 全綠並原樣鏡像到 Codeberg（digest 相同）。#592 仍是 workaround 不是 root fix，re-break 風險與 observable（`client.rs` 的 `Reddit blocked this request (403 Forbidden)…`）不變。文件同步：`redlib-prs.txt`、`design/upstream-pr-bake.md`（§2/§7/§8.8）、兩個 README、`RELEASE_NOTES.md`。
 - 2026-10-21：**鏡像機制上線**（`.github/scripts/mirror_to_codeberg.sh` + `mirror-codeberg` job）：GitHub 端編譯完、manifest 合併完之後，用 `docker buildx imagetools create` 把 `latest`/`<git-sha>`/`amd64`/`arm64` **原樣複製**到 `codeberg.org/lawlietr/redlib`（registry 側 copy，不重新編譯，blob 約 13MB，**digest 兩邊相同**）；缺 `CODEBERG_PAT` 時 exit 1 明確失敗。文件同步：`design/github-actions-workflow.md` 新增 §9、AGENTS.md、兩個 README 的 Tags/CI/CD/存放位置表、`docker-compose.yaml` 註解、`RELEASE_NOTES.md`。
 - 2026-10-21：**煙測上線並全綠**（run `39551016403`，commit `51d0d7e`）：build (amd64)/build (arm64)/manifest/**smoke**/**mirror-codeberg** 五個 job 全成功；smoke 在 runner 上抓到 amd64 與 arm64 binary 皆 `statically linked`、`/` 200 62,216B、`/r/gaming` 200 79,425B、`/r/AskReddit/top` 200 38,012B，qemu 下 arm64 容器 `/` 也回 200；mirror 結尾打印兩邊 child digest 完全相同（`12105bec…` amd64、`d77e9225…` arm64）。第一次嘗試（run `39550258322`）失敗純粹是 smoke job 漏了 `actions/checkout`。

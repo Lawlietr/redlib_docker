@@ -5,6 +5,66 @@ English only (this file is the image changelog consumers read; the design docs i
 
 ---
 
+## 2026-10-23 — thread pages work again via upstream PR #599 (**workaround, and not a complete one**)
+
+**Symptom.** Thread pages were broken again on every instance:
+`Failed to parse page JSON data: expected value at line 1 column 1 | /r/<sub>/comments/<id>/<slug>/.json?&raw_json=1`,
+while `/`, `/r/popular` and subreddit listings kept returning 200. This is the same *class* of failure as the
+2026-10-21 note below — Reddit's block is path-based — but this time it also defeats the **`%2F` encoding**
+workaround that upstream v0.40.0 ships as the direct commit `0a3e9cd`. Upstream `main` had **no commits after
+v0.40.0** (HEAD `ba116c1`), i.e. upstream had not fixed it at all at the time of writing.
+
+**What changed.** `redlib-prs.txt` now bakes six open upstream PRs: the previous five
+(#549, #542, #521, #560, #539) plus [#599](https://github.com/redlib-org/redlib/pull/599)
+(head pinned to `0db637cd`). #599 does not patch the blocked API call — it stops using it:
+
+1. the post itself is fetched from `/by_id/t3_<id>.json` (still JSON, still unblocked at the time of writing);
+2. comments are rebuilt from the **HTML fragments Reddit's own web frontend uses**
+   (`/svc/shreddit/comments/r/<sub>/t3_<id>[/t1_<comment>]`), parsed with `scraper` back into the JSON shape
+   `parse_comments`/`query_comments` already expect, so the templates are unchanged;
+3. "More replies" placeholders are expanded breadth-first through `/svc/shreddit/more-comments/...` POSTs
+   carrying a hidden `cursor`, bounded to 200 comments / 30 expansions / 10 requests in flight, cached for 30s;
+4. because cookieless requests get a reCAPTCHA page after roughly 10 requests, these fragment requests share
+   their own `wreq` cookie jar (`cookies` feature), rotated when `x-ratelimit-remaining < 20`, on a 429, or when
+   a captcha page is detected, with a single retry.
+
+Local x86-64 build and a running container passed the regression run: the reported post
+(`/r/masseffect/comments/1xbt0if/its_over/`) returns 200 with **206 non-empty comment bodies**; comment
+permalinks with `?context=3` work; `?sort=confidence|new|top` really produce different comment sets; a
+0-comment post does not panic; panic count 0; listings and `/r/popular` unaffected.
+
+**⚠ It does not fully solve the problem.** It converts "the page is dead" into "the page works with losses":
+
+| Loss / risk | Detail (measured locally unless stated) |
+|---|---|
+| Still a workaround, **more fragile than #592** | It depends on Reddit's **undocumented internal fragment endpoint**; if Reddit turns it off or changes the markup, thread pages die again. |
+| Brittle throttle handling | Captcha detection matches the literal page title `Reddit - Prove your humanity`. If that string changes, the challenge page is parsed as if it were comment content. |
+| **Request amplification** | 1–31 Reddit requests per **uncached** thread page; measured **3.07s cold / 0.019s hot** (a listing is 0.74s for comparison). The cache lives only 30s. |
+| One shared session per instance | The fragment cookie session is process-global, so all visitors of an instance share one quota and can exhaust it for each other. Upstream #597 / #446 already complain about rate limits. When this bites you see: `Reddit is rate limiting comment requests. Try refreshing in a few seconds.` |
+| **200-comment cap** | Anything beyond 200 comments stays as unexpanded "More replies" stubs (93–106 stubs left on the big threads we tested). |
+| Missing comment metadata | Author flair and awards are not present in the fragments, so comments render without them. `?context=` permalinks and nesting do work. |
+| **The subreddit name is no longer validated** | The post now comes from `by_id`, which ignores the subreddit: a wrong subreddit plus a valid post id returns **200 and renders the other post** (`/r/__totally_wrong_sub__/comments/1xbt0if/x/` → the r/masseffect post). Upstream `main` returns 404 for such a URL. |
+| Untested / out of scope | shreddit behaviour for quarantined subreddits is untested; the front-page feed parse error (#589) and Anubis PoW (#567) are untouched. |
+| Still depends on `by_id` | If Reddit blocks `/by_id/t3_<id>.json` too, thread pages die completely again — and the old parse-error string is what you will see. |
+| Size and supply chain | 25 new crates (`scraper`, `html5ever`, `cssparser`, `phf`, …); image 13.5MB → 14.8MB. |
+| Trust surface | Comment `body_html` is now produced from the fragment's `inner_html()`. redlib renders `body_html` unescaped and has no sanitizer, so the trusted producer changes from "Reddit's API `body_html`" to "Reddit's frontend fragment". |
+| Review status | The upstream PR is **AI-generated, has 0 reviews and 0 CI check runs** — upstream never compiled it. Our own build (`--locked`) compiles it, which is the only build evidence that exists. |
+
+**How to tell which layer broke** (see `design/error-triage-playbook.md`):
+`Reddit returned <status> | /svc/shreddit/...` (fragment endpoint blocked),
+`Reddit is rate limiting comment requests. Try refreshing in a few seconds.` (shared quota exhausted), or the old
+`Failed to parse page JSON data: expected value at line 1 column 1 …` (even `by_id` is blocked now).
+
+**Rolling it back.** Delete the `599 …` line from `redlib-prs.txt` and rebuild (or run an older `<git-sha>`).
+That restores upstream v0.40.0's behaviour, i.e. the broken thread pages, so only roll back if #599 misbehaves
+worse than a dead page.
+
+**Image.** Built by GitHub Actions into `ghcr.io/lawlietr/redlib` and mirrored verbatim into
+`codeberg.org/lawlietr/redlib` (same tags, same digests). Tag carrying this change: `<git-sha>` of the commit that
+adds the `599 …` line; `latest` is rolling.
+
+---
+
 ## 2026-10-22 — retire redlib PR #592 from the bake (upstream ships the same thread-403 workaround)
 
 **What changed.** The bake list (`redlib-prs.txt`) no longer bakes upstream
