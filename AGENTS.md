@@ -139,6 +139,11 @@ Multi-stage build:
   - **PR #603 (GraphQL comment fetch) was evaluated on 2026-10-27 and deliberately NOT baked** — it is a mutually exclusive replacement for the shreddit path (same fetch line in the post handler; git conflicts with the current list in both merge orders), it does not rescue the instance whose egress IP Reddit blocks, and it trades one undocumented Reddit dependency for another (an Android persisted-query hash). Measured pros: 2.7-4x faster, and real cursor pagination past the 200-comment ceiling. Trigger conditions for re-evaluating: `design/upstream-pr-bake.md` §8.14.
 - Build: `cargo build --release --locked --bin redlib`
 
+### Front Door vs Egress (read before blaming a proxy or a "different machine")
+`design/reverse-proxy-front.md` holds the proven topology. Two rules that cost us two wrong diagnoses:
+- **反向代理／ZeroTier／Cloudflare 都在入口側，不影響 Reddit 看到的 IP。** 決定被封與否的是「**redlib 這個行程跑在哪一台**」的 egress。`ddit.avpclub.uk` 的入口是 o3 上的 Zoraxy（`conf/proxy/ddit.avpclub.uk.config`，`ActiveOrigins = someZT:8080`），但真正抓 Reddit 的是 **123**，所以它能動；o1/o2/o3 本機的 redlib 全被 `/svc/shreddit/` 打死（同 `AS31898` Oracle Tokyo）。
+- **比較兩台之前先證明「兩台在跑同一支映像」與「redlib 在哪台」**（`docker inspect --format "{{.Image}}"`、Zoraxy 規則的 `ActiveOrigins`）。雲主机（o1/o2/o3）資源都夠跑 redlib（idle RSS 約 43MB），但只有出口乾凈的機器能用。
+
 ### Error Triage (runtime bug reports)
 When a user reports a broken page or a runtime error message, follow `design/error-triage-playbook.md` instead of reasoning from the message alone. Key rules learned from the 2026-10-21 thread-page incident:
 - redlib's error strings are symptoms (a parse error usually means Reddit returned non-JSON, e.g. a 403 block page) — locate the failing upstream call site first.

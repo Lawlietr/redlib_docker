@@ -47,11 +47,11 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | [#521](https://github.com/redlib-org/redlib/pull/521) | `93c03bb1` | `src/subreddit.rs`：`post_sort` 由 `req.cookie("post_sort")` 改 `setting(&req, "post_sort")` | **`REDLIB_DEFAULT_POST_SORT` 不必先存設定才生效**（直接關係本 repo 的 env） |
 | [#560](https://github.com/redlib-org/redlib/pull/560) | `7a284d30` | 新增 `/u/:name/s/:id` 分享連結處理（id 長度 guard `(8..12)`） | ⚠ **實際上用不了**：現行 post id 是 7 字元 → 一律 `Nothing here` 404；既有的 `/r/:sub/s/:id` 同病。見 §8.9 |
 | [#539](https://github.com/redlib-org/redlib/pull/539) | `514202ad` | `templates/utils.html` 移除 `<svg><image>` 包裝，改直出 `<img loading="lazy">` | 圖片 lazy-load；同時覆蓋原 fork patch D3 的 SVG 部分 |
-| [#599](https://github.com/redlib-org/redlib/pull/599) | `26c02193`（pin 移到了 2026-10-27；原先分析時是 `0db637cd`） | 新增 `src/shreddit.rs`（791 行）+ `src/client.rs` 的 `shreddit_fragment()`：貼文改 `/by_id/t3_<id>.json`、**留言改抓 Reddit 前端自己的 `/svc/shreddit/comments/...` HTML fragment** 用 `scraper` 重建原 JSON 形狀；cookie session 輪替 + captcha 偵測；`Cargo.toml` 加 `scraper 0.29` 與 wreq `cookies` feature。**2026-10-27 改 pin 後多出的三支 commit**（`1d55e3e`/`a12eaf6`/`26c0219`）：`rdt` bot-check 的 302 追隨（最多 3 次，只准落在 `/svc/shreddit/`）+ 展開改用 `JoinSet`（不再批次柵欄）、留言裡的 `<shreddit-player>` 改原生 `<video>`（GIF autoplay/loop/muted）、**more-comments POST 補 `Origin`/`Referer`/`Sec-Fetch-*`**（Reddit edge 開始 403 缺這些的 POST）+ **shreddit 專用 client 改用桌面平台**（行動端每 fragment 只給 10 則，桌面 25 則） | 貼文頁留言恢復（`%2F` 繞行已被 Reddit 識破後唯一可行的上游方案）。⚠ **繞行、且不完整**：200 則上限、無 flair/awards、每頁 1–31 請求、subreddit 不驗證。⚠ **只吃 IP：出口是機房 ASN（Oracle/Hetzner/Vultr…）的實例，`/svc/shreddit/` 從第一個 fragment 就 403，换 pin 也不會修好** —— 詳 §8.13（2026-10-27 o3/123 定因）。詳 §8.12 |
+| [#599](https://github.com/redlib-org/redlib/pull/599) | `26c02193`（pin 移到了 2026-10-27；原先分析時是 `0db637cd`） | 新增 `src/shreddit.rs`（791 行）+ `src/client.rs` 的 `shreddit_fragment()`：貼文改 `/by_id/t3_<id>.json`、**留言改抓 Reddit 前端自己的 `/svc/shreddit/comments/...` HTML fragment** 用 `scraper` 重建原 JSON 形狀；cookie session 輪替 + captcha 偵測；`Cargo.toml` 加 `scraper 0.29` 與 wreq `cookies` feature。**2026-10-27 改 pin 後多出的三支 commit**（`1d55e3e`/`a12eaf6`/`26c0219`）：`rdt` bot-check 的 302 追隨（最多 3 次，只准落在 `/svc/shreddit/`）+ 展開改用 `JoinSet`（不再批次柵欄）、留言裡的 `<shreddit-player>` 改原生 `<video>`（GIF autoplay/loop/muted）、**more-comments POST 補 `Origin`/`Referer`/`Sec-Fetch-*`**（Reddit edge 開始 403 缺這些的 POST）+ **shreddit 專用 client 改用桌面平台**（行動端每 fragment 只給 10 則，桌面 25 則） | 貼文頁留言恢復（`%2F` 繞行已被 Reddit 識破後唯一可行的上游方案）。⚠ **繞行、且不完整**：200 則上限、無 flair/awards、每頁 1–31 請求、subreddit 不驗證。⚠ **只吃 IP：出口是機房 ASN（Oracle/Hetzner/Vultr…）的實例，`/svc/shreddit/` 從第一個 fragment 就 403，換 pin 也不會修好** —— 詳 §8.13（2026-10-27 o3/123 定因）。詳 §8.12 |
 | [#592](https://github.com/redlib-org/redlib/pull/592) | `1e9515eab8d0` | `src/client.rs`：`encode_thread_route()` 把 `/r/<sub>` 與 `comments` 之間那**一個** slash 編碼成 `%2f`（放進 `json()` 入口，涵蓋所有呼叫者）；另加 `non_json_response_error()` 把 403 區塊頁報成「Reddit blocked this request (403 Forbidden)…」而非 parse error。附 5 個純函式測試 | **貼文頁恢復可用**（此前所有實例的 `/r/x/comments/<id>/…` 全數 403 → 前端 `Failed to parse page JSON data: expected value at line 1 column 1`）。⚠ **這是繞行，不是根治**，見 §8.8。
 > **2026-10-22 退役**：上游 v0.40.0 以直接 commit `0a3e9cd fix: encode anonymous comments request paths` 實作等效 `%2f` 繞行（同碰 `src/client.rs`）。#592 作為 **PR 從未合併**，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故已從 `redlib-prs.txt` 移除；thread-403 現由上游 `0a3e9cd` 供應。見 §8.8。
 > **2026-10-27 複核（使用者問「#592 後來被關了，我們要做什麼嗎」）→ 答案：不用做任何事。**
-> - PR 已由維護者 `sigaloid` 在 **2026-10-21T22:57Z 直接 close（未 merge）**，`mergeable=false`、無 review、討論區有人嗆 "AI slop"。它的兩支 commit（`b920292d`/`1e9515ea`）以 `git cherry -v origin/main pr592` 檢查**仍全是 `+`**（从未以 patch-equivalent 進 main）→ 我們的「它沒被上游 merge、改用上游等效 commit」判定到現在都正確。
+> - PR 已由維護者 `sigaloid` 在 **2026-10-21T22:57Z 直接 close（未 merge）**，`mergeable=false`、無 review、討論區有人嗆 "AI slop"。它的兩支 commit（`b920292d`/`1e9515ea`）以 `git cherry -v origin/main pr592` 檢查**仍全是 `+`**（從未以 patch-equivalent 進 main）→ 我們的「它沒被上游 merge、改用上游等效 commit」判定到現在都正確。
 > - **新實測把 `0a3e9cd` 那招也正式判死**（之前只是推論）：用 `redlib-prs.txt` **去掉 #599** 建的對照映像（= main + 其餘 5 支，保留 `0a3e9cd` 的 `%2F` 編碼）在**出口好的 123 與被封的 o3 上都拿不到留言**：4 條貼文全 404 / `Failed to parse page JSON data: expected value at line 1 column 1` / 0 則留言。**結論：#599 目前是 load-bearing，不能因為它是 workaround 就丟掉**（詳 §7、§8.14）。 |
 
 **merge 順序 = `redlib-prs.txt` 檔內順序**（549 → 542 → 521 → 560 → 539 → 599）。六支檔案重疊極少（549 與 560 同碰 `src/main.rs` 但不同區塊），實測 `--no-ff` 全 clean；2026-10-23 以 `git merge --no-ff` 驗證過 **#599 放最後與放第一個都是 six-way clean**（#599 只碰 `client.rs`/`post.rs`/`lib.rs`/`shreddit.rs`/`Cargo.*`，與其餘五支零重疊），本地 `docker build` 亦 exit 0（`--locked` 未報 lock 不一致）。
@@ -126,7 +126,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
   - [x] 留言排序三種真的不同集合（`?sort=confidence` 223 / `new` 205 / `top` 215 個留言塊，首則也不同）
   - [ ] 200 則上限：大討論串會剩「More replies」殘根（本地 93–106 個）→ 上線後確認可接受
   - [ ] subreddit 名稱不再被驗證：`/r/__totally_wrong_sub__/comments/1xbt0if/x/` 本地回 **200 並顯示 r/masseffect 那篇**（上游 `main` 是 404）→ 上線後確認不會造成誤導性連結
-  - [ ] 請求放大成本：本地**冷 3.07s / 熱 0.019s**（listing 0.74s）→ 上線後看真实流量下的延遲與 rate-limit 訊息頻率
+  - [ ] 請求放大成本：本地**冷 3.07s / 熱 0.019s**（listing 0.74s）→ 上線後看真實流量下的延遲與 rate-limit 訊息頻率
   - [ ] 留言缺 author flair / awards（外观退步，非功能错误）
 - [x] **#599 pin bump 2026-10-27（`0db637cd` → `26c02193`）**（本地 build + 出口可用機器上的容器 A/B，全部跑完）：
   - [x] 本地 `docker build` exit 0，log 出現 6 行 `Merging PR #<n>` 且**無 `warning:`**（pin 已對齊 head，不再報 `head moved`）
@@ -171,7 +171,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
         列表 `/r/popular` 三支配方都 200 / 59,929 B / 25 篇（**只有留言壞，本體沒壞**）。
         → 判定：**#603 救不了被 Reddit 擋出口 IP 的實例**（§8.13 那一層跟用哪條留言路徑無關）。
         ⚠ 尚**未查明** o3 上 #603 死在哪一段（`/by_id` 那段在 #599 映像裡是成功的，所以可能是 `gql-fed.reddit.com` 那段；
-        兩條候選與查法見 §8.14）。負 control（不存在的 post）在 #599/#603 兩边都是 `Reddit error 404 "null": "Not Found" \| /by_id/t3_zzzzzzz.json?raw…` → 正確。
+        兩條候選與查法見 §8.14）。負 control（不存在的 post）在 #599/#603 兩邊都是 `Reddit error 404 "null": "Not Found" \| /by_id/t3_zzzzzzz.json?raw…` → 正確。
   - [ ] 本輪**未補到**的項目：0 則留言的 post（在用的 subreddit 列表裡找不到素材）、quarantined sub、
         留言媒體的 `<video>` 改造（抓到的那个討論串沒有留言媒體）。
   - [ ] 已知**仍未修**（不在這次 pin bump 範圍）：留言圖片 overflow 容器（Sparronator9999 2026-10-27T07:42Z 回報，
@@ -216,11 +216,11 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
     - 不存在的 sub → **200 空頁**（不是 404）。線上與本地同映像 **6958 bytes 完全一致** → 上游行為。
     - 某些 sub（例：`r/DeathByCapybara`）的列表渲染出**空 subreddit、空作者、空 permalink** 的 post（`href=""`、`r/`、`u/`）→ Reddit 回傳的 stub 資料；同樣在本地同映像重現（9098/9100 bytes 等級）。想要那種 sub 的可用列表，得在上游處理，不是我們的 bake 問題。
 
-12. **#599（shreddit fragment）——贴文頁留言的目前唯一可行上游方案，但它不是根治，也不完整**（2026-10-23 bake）：
-    - **背景**：Reddit 把匿名 client 的 comments API 全數 403，**连带 `%2F` 编码绕行也被破**（上游 v0.40.0 的 `0a3e9cd` 失效）。
-      定因方式：线上 `/`、`/r/popular` = 200，贴文頁 = 404 + parse error（`…/.json?&raw_json=1`）→ 仍是**按路徑**的封鎖。
+12. **#599（shreddit fragment）——貼文頁留言的目前唯一可行上游方案，但它不是根治，也不完整**（2026-10-23 bake）：
+    - **背景**：Reddit 把匿名 client 的 comments API 全數 403，**连帶 `%2F` 编码繞行也被破**（上游 v0.40.0 的 `0a3e9cd` 失效）。
+      定因方式：线上 `/`、`/r/popular` = 200，貼文頁 = 404 + parse error（`…/.json?&raw_json=1`）→ 仍是**按路徑**的封鎖。
       本機 curl 對 Reddit 所有端點（含 `by_id`、`/svc/shreddit/`）一律 403 同一份 block page → 對本機 IP 而言裸 curl **無區辨力**（playbook 假陰性）。
-    - **機制**：贴文走 `/by_id/t3_<id>.json`；留言走 `www.reddit.com/svc/shreddit/comments/r/<sub>/t3_<id>[/t1_<cid>]`，
+    - **機制**：貼文走 `/by_id/t3_<id>.json`；留言走 `www.reddit.com/svc/shreddit/comments/r/<sub>/t3_<id>[/t1_<cid>]`，
       用 `scraper` 把 `<shreddit-comment>` 重建為原 JSON 形狀（`parse_comments`/模板不改）；「More replies」以 `more-comments` POST + 隱藏 `cursor`
       做 BFS，上限 `CRAWL_LIMITS = {200 留言, 30 expansions, 10 併發}`；cache 30s；反限流靠**自己的 cookie jar**（wreq `cookies`），
       `x-ratelimit-remaining < 20` / 429 / 比對到 captcha 頁面標題字串就輪替 session 再重試一次。
@@ -230,16 +230,16 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
       `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`（配額耗盡）、
       `Refusing to fetch non-shreddit path`（路徑守衛）、旧的 `Failed to parse page JSON data: expected value at line 1 column 1`（`by_id` 也被封）。
     - **已知不完整（本機實測）**：留言 200 則上限（大讨論串剩 93–106 個未展開殘根）；留言無 author flair/awards；
-      每個未 cache 的贴文頁 1–31 個請求（**冷 3.07s / 熱 0.019s**，listing 0.74s）；`SHREDDIT_SESSION` 是 process-global
+      每個未 cache 的貼文頁 1–31 個請求（**冷 3.07s / 熱 0.019s**，listing 0.74s）；`SHREDDIT_SESSION` 是 process-global
       → 同實例所有訪客共用一份配額；**subreddit 名稱不再被驗證**（錯 sub + 對 post id 回 200 並渲染別篇文章）；
       quarantined sub 未測；映像 13.5MB → 14.8MB（新增 25 個 crate）。
-    - **信任面**：留言 `body_html` 改由 fragment 的 `inner_html()` 產生，而 redlib 對 `body_html` 是 `|safe` 渲染且**不做 sanitize**（无 ammonia）
+    - **信任面**：留言 `body_html` 改由 fragment 的 `inner_html()` 產生，而 redlib 對 `body_html` 是 `|safe` 渲染且**不做 sanitize**（無 ammonia）
       → 信任對象從「Reddit API 的 body_html」變成「Reddit 前端 fragment 的渲染結果」。
-    - **品質風險**：上游 PR 為 **AI 生成、0 review、0 check runs**（head `0db637cd` 没被任何 CI 编譯過）；
-      我们的 `--locked` 本地 build 已通过（PR 自带的 `Cargo.lock` 自洽，含 `cookie` 進 wreq deps + 25 個新 package），
-      但 **不保证未来上游 main 漂移後 lock 仍自洽** → head 漂移動會 warn（`redlib-prs.txt` 已 pin）。
-    - **退出策略**：若 Reddit 封掉 shreddit 或 #599 被 force-push 成不能用，從 `redlib-prs.txt` 移除该行即可（`client.rs`/`post.rs` 回到上游 v0.40.0 形態）；
-      届时贴文頁會回到 parse error，**不要重啟容器當解法**。
+    - **品質風險**：上游 PR 為 **AI 生成、0 review、0 check runs**（head `0db637cd` 沒被任何 CI 编譯過）；
+      我們的 `--locked` 本地 build 已通过（PR 自帶的 `Cargo.lock` 自洽，含 `cookie` 進 wreq deps + 25 個新 package），
+      但 **不保證未來上游 main 漂移後 lock 仍自洽** → head 漂移動會 warn（`redlib-prs.txt` 已 pin）。
+    - **退出策略**：若 Reddit 封掉 shreddit 或 #599 被 force-push 成不能用，從 `redlib-prs.txt` 移除該行即可（`client.rs`/`post.rs` 回到上游 v0.40.0 形態）；
+      屆时貼文頁會回到 parse error，**不要重啟容器當解法**。
 
 13. **出口 IP 信譽是獨立於 code 的失敗層：同一個 digest，兩台實例結果相反**（2026-10-27 o3 vs 123 定因）：
     - 兩台都是**同一個 manifest digest** `sha256:73900bee…8932e`（= `ac3f175` 那次 CI，含 bake #599）：
@@ -291,18 +291,18 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
      `docker logs` 看那行 `ERROR redlib::utils > Error page rendered: …` 的**完整訊息**（#603 的 GraphQL 失敗會回
      `Reddit comments request returned <status>` / `Reddit returned an invalid comments response` / `Reddit comments API error: […]`，
      而 `client::json()` 失敗會是 `Failed to parse page JSON data: …` 或 `Reddit returned <status> | <path>`）——
-     看到前三种就是 (a)，看到後兩者就是 (b)。**這是最後一次用「猜」的，別在沒讀到那行 log 之前決定換手。**
+     看到前三種就是 (a)，看到後兩者就是 (b)。**這是最後一次用「猜」的，別在沒讀到那行 log 之前決定換手。**
   2. **脆度同級、但少一條退路**：依賴 Reddit **未文件化的 persisted-query hash**（外加 `PostComments` 的欄位形狀）。
      Reddit 一輪替 hash 或改 schema，留言就整批壞，而且错误會长得像「上游改了」而不是「我們依賴的東西變了」。
      #599 依賴的是 Reddit 給登出訪客的 HTML fragment（也是未文件化），但兩者**不同源**，所以「只留一套」= 失去互為備援的條件。
-  3. **每頁留言數变少**：大討論串 240 → 200（#603 每頁硬性 200 + 10 層），未展開的 `More replies` 反而变多（112 → 148）。
-     换来的是 2.7–4× 的速度與真正可用的 `cursor` 下一頁（這是 #599 **做不到**的：#599 的 200 則上限是 crawl 上限，沒有分頁連結）。
+  3. **每頁留言數變少**：大討論串 240 → 200（#603 每頁硬性 200 + 10 層），未展開的 `More replies` 反而變多（112 → 148）。
+     換來的是 2.7–4× 的速度與真正可用的 `cursor` 下一頁（這是 #599 **做不到**的：#599 的 200 則上限是 crawl 上限，沒有分頁連結）。
 - **什麼情況下重啟評估（三個觸發條件，任一成立就重測）**：
   1. **#599 坏**（Reddit 改掉 fragment HTML 結構 / `rdt` bot-check 升級 / 對 shreddit 端的 IP+UA 規則收緊）→ #603 立刻從「觀望」變「候選」；
-  2. **我们要突破 200 則**（使用者回報大討論串看不完、或我們要 `?cursor=` 分頁這種 UX）→ #603 是唯一有分頁的上游方案；
+  2. **我們要突破 200 則**（使用者回報大討論串看不完、或我們要 `?cursor=` 分頁這種 UX）→ #603 是唯一有分頁的上游方案；
   3. **上游把 #603 merge 進 main**（或 merge #599 後要求二選一）→ 屆時由 upstream 決定取捨，我們只跟 pin。
   另外：如果決定換手，**先**在 o3 上把上面那條 log 讀出來（條件 1 的前置），並在 123 上做標準雙映像 A/B
-  （`design/error-triage-playbook.md` §3），兩边都過才改 `redlib-prs.txt`。
+  （`design/error-triage-playbook.md` §3），兩邊都過才改 `redlib-prs.txt`。
 - **相關的其它 PR（避免重複評估）**：#601（`xevxx`，用 logged-out comments API 修 thread 載入）**2026-10-23 已 close 未 merge**；
   #598（update-check TypeError）與此無關。2026-10-27 的 open PR 全清單（51 支）中，與「匿名留言」相關的只有 #599 與 #603。
   ⚠ 顺帶記錄：#605（`rss 2.1.2` 修 quick-xml DoS 兩條 RUSTSEC）**2026-10-27 close 未 merge**，但上游 main 的 `Cargo.lock`

@@ -230,6 +230,12 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > fine. That is **egress IP reputation, not code**. A Cloudflare CDN in front of the instance does not help either:
 > the CDN only fronts the **inbound** direction, while redlib's request to Reddit leaves the box itself.
 > Triage procedure: `design/error-triage-playbook.md` §4.2 and `design/upstream-pr-bake.md` §8.13.
+> **A reverse proxy, ZeroTier or a VPN only sit on the *inbound* leg** and never change the egress IP Reddit
+> sees: all three of our cloud hosts (o1/o2/o3, every one of them `AS31898` Oracle Tokyo) have more than enough
+> resources for redlib (idle RSS about 43MB) yet every thread page there returns
+> `Reddit returned 403 Forbidden | /svc/shreddit/...`, while the instance inside our LAN (Ubox-02 / "123") works
+> and the front door on o3 merely forwards the request into the ZeroTier network. Topology and measurements:
+> `design/reverse-proxy-front.md`.
 
 ## Environment Variables
 

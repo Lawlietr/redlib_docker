@@ -31,8 +31,8 @@ grep -rn "Failed to parse page JSON\|Reddit is having issues\|Reddit error" /tmp
 
 - 讀該 callsite 的上下文，找出它屬於哪個函式（`client.rs` 的 `json()`／`request()`／
   `reddit_get()`／`reddit_short_head()`）與哪些 route handler 會走到它。
-- 從 URL 本身也能反推：query 带 `raw_json=1` 的都是經 `json()` 的 upstream 資料抓取；
-  带 `sort=` 的是貼文頁；`about.json`／`by_id`／`duplicates` 是另一批端點。
+- 從 URL 本身也能反推：query 帶 `raw_json=1` 的都是經 `json()` 的 upstream 資料抓取；
+  帶 `sort=` 的是貼文頁；`about.json`／`by_id`／`duplicates` 是另一批端點。
 - **分層判斷**：若同一份 body 是 HTML（`<body` 起頭）→ 被封鎖或被人機驗證擋；
   若是 JSON 但缺欄位 → 是 schema 漂移，不是封鎖。
 
@@ -166,6 +166,30 @@ docker inspect <watchtower 容器名> --format '{{json .Config.Cmd}}'   # 清單
   2026-10-27 更新後的實測：amd64 那台貼文頁 200 / 252,837 B / 232 則；被封的機房那台照舊 404 +
   `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/…`（換 pin 不改變結局，正符合 §4.2 的預測）。
 
+### 步驟 0b：先確認「redlib 這個行程跑在哪一台」——反向代理／ZeroTier 在哪台**不影響** Reddit 看到的 IP
+
+2026-10-27 的第二次教訓（用戶正確的反問）：**入口那條 leg 和出口那條 leg 是兩件事。**
+Reddit 只看「發起 HTTP 請求的那個行程」的 egress；反代（Zoraxy／nginx）、ZeroTier、Cloudflare 全部在入口側，
+不改變判定。所以「反代在 o3，所以用的是 o3 的 IP」是**錯的直覺**。
+
+```sh
+# 1) 現行入口規則真正的 origin 是誰（o3 上的 Zoraxy 是按網域存檔）
+ssh o3 'cat /root/zoraxy/config/conf/proxy/ddit.avpclub.uk.config' | python3 -c \
+  'import json,sys;d=json.load(sys.stdin);print(d["ActiveOrigins"]);print(d["InactiveOrigins"])'
+# 2) 那台 redlib 自己看 Reddit 的出口是誰 + 貼文頁實測
+ssh 123 'docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" redlib; \
+         curl -s -o /tmp/t.html -w "%{http_code} %{size_download}\n" http://127.0.0.1:8080/r/comics/comments/1xgpbes/x/; \
+         grep -c "class=\"comment\"" /tmp/t.html'
+# 3) 想驗證「換一台跑 redlib 會怎樣」，就在那台跑臨時容器再打本機 port（別用裸 curl 連 reddit.com）
+```
+
+- 這輪的實測：`ddit` 的 active origin 是 `someZT:8080` = **123 的 ZeroTier IP**，貼文頁 **200 / 150,701 B / 128 則**；
+  同一貼文在 **o1 / o2 / o3 本機的 redlib** 都是 **404 / 0 則 + `Reddit returned 403 Forbidden | /svc/shreddit/…`**
+  （三台皆 `AS31898 Oracle Corporation, Tokyo`），但三台的 **列表都 200**（路徑規則，不是整台被封）。
+- **o1／o2 也一起測掉了**：資源完全夠（2 vCPU、985MB RAM、27–33G free、redlib idle RSS 僅約 43MB），
+  **不能用的原因只有出口**。它們只能當入口，不能當 Reddit-facing 實例。拓撲、實測表、搬前門的配方與注意事項：
+  `design/reverse-proxy-front.md`。
+
 ### 判別順序（比對「兩台」比對「兩支映像」更快）
 
 1. 先確認兩台是**同一個 manifest digest**（不是同一個 tag 字串而已）：
@@ -214,8 +238,8 @@ docker inspect <watchtower 容器名> --format '{{json .Config.Cmd}}'   # 清單
    | 同上 HTTP/1.1 打 `/r/popular.json` | 403 | 403 |
 
    → 判讀：**兩個 IP 對裸 curl 都 403（無辨識力，見 §3 的假陰性陷阱），只有「瀏覽器級 headers」能把差異暴露出來**。
-   住宅 IP 200 / 機房 IP 403，且换 HTTP 版本、换 headers 都不變 → **出口 IP／ASN 信譽等級的封鎖**，
-   不是指紋、不是 code、不是 token。此时**换 pin（#599 更新）不會修好壞的那台**。
+   住宅 IP 200 / 機房 IP 403，且換 HTTP 版本、換 headers 都不變 → **出口 IP／ASN 信譽等級的封鎖**，
+   不是指紋、不是 code、不是 token。此时**換 pin（#599 更新）不會修好壞的那台**。
 5. 順手把兩台的出口 ASN 記進回報（Oracle / Hetzner / Vultr / DigitalOcean / AWS 這一類機房 ASN
    對 `/svc/shreddit/` 基本全滅；Hinet／固網寬頻這一類住宅線目前可用）。這比任何源碼分析都快。
 
@@ -229,7 +253,7 @@ docker inspect <watchtower 容器名> --format '{{json .Config.Cmd}}'   # 清單
 - 所以**沒有任何東西「被 Reddit 指紋識別」到 o3 有 CDN 這件事**：Reddit 在自己的 edge 上看到的
   就是 `o3PublicIP`（AS31898 Oracle）發出的請求，而 redlib 用的 wreq 已是瀏覽器級
   TLS/JA4/HTTP2 模擬（`src/client.rs` 的 `build_emulated_client`）、列表也拿得到 200，
-  卻照样在 `/svc/shreddit/` 吃 403 → 證據指向 IP 信譽而不是指紋。
+  卻照樣在 `/svc/shreddit/` 吃 403 → 證據指向 IP 信譽而不是指紋。
 - **redlib 本身沒有 proxy 設定**：上游 `src/` 只有**進向**的媒體 proxy route（`main.rs` 的
   `/img`、`/thumb`、`/hls`、`/vid` 等），沒有任何出向 proxy 的 env 或代碼（2026-10-27 以
   `git grep -i proxy` 在含 #599 的樹上確認）。因此「叫 redlib 走住宅出口」必須靠**主機層 L3/L4**
