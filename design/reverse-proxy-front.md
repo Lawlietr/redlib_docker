@@ -75,7 +75,7 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 
 ---
 
-## 3. 顺帶查出來的兩個暴露面（建議處理）
+## 3. 順帶查出來的三個暴露面（處理狀態見各節標題）
 
 1. **o1 與 o3 的 redlib 都在裸 IP 上以 HTTP 公開**：`http://o1PublicIP:8084/` → 200、
    `http://o3PublicIP:8084/` → 200（從外部機器直接可達）。o1 那台還是**舊 pin、貼文頁全壞**的幽靈實例。
@@ -264,6 +264,27 @@ source-accept 與 Zoraxy 白名單裡的 `她的自宅公網IP/32` 都會在她 
 
 ---
 
+### 3.6 收網：`8443`＋`8080` 都縮成 VCN 內，code-server 的前門正式改由 Zoraxy 承擔（2026-10-27 23:1x 完成並複測）
+
+她這輪的決定與動作：**「code server 就讓 zoraxy 代理就好，我已經連 dns 改好了」＋「8080 跟 8443 一樣限縮」＋「原本的 cf tunnel 殘留幫我安全清除」**。
+落地與驗收（完整脈絡、快照位置與回滾一行式在她的 repo：`o3_stuffs/OCI/doc/security-list-hardening-20261027.md`；
+那側另有可重用工具 `OCI/narrow_ingress_rule.py`，預設空跑、`--apply` 前自動整份快照，已在 124 空跑驗證）：
+
+| 項目 | 狀態（實測） |
+|---|---|
+| 雲端 `tcp/8443` 來源 | `0.0.0.0/0` → **`10.0.0.0/16`**。internet → `o3:8443` 從「302 拿到 code-server 登入頁」變成 **closed/filtered（`http=000`）**；`10.0.0.134:8443/login`、`127.0.0.1:8443` 仍 **200**；ZeroTier `123 → o3ZT:8443/login` 仍 **200** |
+| 雲端 `tcp/8080` 來源 | `0.0.0.0/0` → **`10.0.0.0/16`**（同一個 origin-bypass 模式）。internet → `o3:8080` 從 OPEN/307 變成 **closed**；內部 `10.0.0.134:8080/` 仍 307；`https://git.avpclub.uk/`（Zoraxy 的 origin 就是 `10.0.0.134:8080`）仍 **307**，沒被打斷 |
+| ⚠ 生效延遲 | **10–40 秒**。8080 第一次探測仍 OPEN，差點誤判「改動無效」，30 秒後才 closed ⇒ 驗證雲端規則一定要重試再下結論 |
+| `code.avpclub.uk` | 她把 CNAME 從 `CFtunnelCode-….cfargotunnel.com` 改成 **`o3.avpclub.uk`（proxied）** ⇒ o3 Zoraxy 那條**早就存在**的規則（`OriginIpOrDomain = 10.0.0.134:8443`、`RequireTLS=false`）終於收到流量：`https://code.avpclub.uk/login` → **200 / 2,621 B、`<title>code-server login`**，header 有 `server: cloudflare`。路徑＝**visitor → CF（WAF／challenge／國家過濾）→ o3:443（Zoraxy）→ `10.0.0.134:8443`（code-server，VCN 內明文）** |
+| 舊 tunnel 的殘留 | o3 主機側**完全乾淨**（`/etc/cloudflared`、systemd unit、容器、image，連 Zoraxy 設定內文 grep `cloudflared|cfargotunnel` 都 0 命中）；DNS 殘留已由她清掉。**CF 那側的 tunnel 本體（`CFtunnelCode`）清不掉**——這把 `CLOUDFLARE_API_TOKEN` 只有 Zone DNS 權限（`GET /accounts/{acct}/cfd_tunnel` 回 `count=0`、`GET …/{id}` 回 **`1001 Not authorized`**）⇒ 要她在 dashboard 刪；**真正要除掉的是它的 connector token（至今仍是有效憑證**：拿到就能在自己的機器上註冊成這條 tunnel 的 connector，變成 CF 眼裡的合法 origin） |
+| 其他仍對 `0.0.0.0/0` 開著的 origin 埠 | `8880`（**三台都沒有 listener**＝純遺骨）、`2052 2053 2082 2083 2086 2087 2095 2096`（目前也沒服務在聽；若要收，來源應是 **CF 的公網 IP 段**而不是 `10.0.0.0/16`，因為它們的用途就是讓 proxied 記錄打非 443 的 origin 埠）。都還開著，等她拍板 |
+
+**對 redlib 的含義**：
+1. `ddit` 這條路完全沒被這次改動打到（複測 **200 / 62,151 B**；123 的 redlib 仍是 active origin）。
+2. 這是**同一個教訓的第二次應用**：`8080/8443/8880/2052-2096` 這類「CF 支援的 origin 埠」對 `0.0.0.0/0` 開啟＝**origin bypass**，任何人可以不經過 CF（因此也沒有 WAF／國家過濾／IP 信譽）直接打 origin。以後新增 proxied 服務，**雲端清單不要為了「換個埠」再開新口子**；要嘛沿用 443→Zoraxy，要嘛把來源縮到 CF 的 IP 段。
+
+⚠ **本輪的一次自我失誤（跨專案都要記住）**：盤點「哪台跑哪條 tunnel」時我用了 `pgrep -a cloudflared`，把三條 connector 的 **token 原字印進輸出**（token 就在 argv，`/proc/<pid>/cmdline` 全域可讀）⇒ 視為已外洩，三條都要在 CF 輪換（受影響清單與輪換步驟在她 repo `o3_stuffs/doc/credentials.md` 最後一節）。以後查 connector 只用 `cloudflared --version` 與「只解 token 的 base64 payload、只取 tunnel id／account id 欄位」；要顯示進程清單必先遮 `--token`，不要把 `pgrep -a`／`ps aux | grep` 的輸出貼進 log、git 或訊息。
+
 ## 4. 若要搬回本地前門（nx = NGINX-UI 那台）——可用的配方
 
 nx（`192.168.1.17`，zt `someZT`，Ubuntu 24.04，nginx 1.24.0，**geoip2 dynamic module 已裝**，
@@ -343,9 +364,7 @@ server { listen 80; listen [::]:80; server_name ddit.avpclub.uk; return 301 http
 
 ## 5. 這輪的處置與未處置
 
-- **沒動任何 DNS、沒動 o3 的 Zoraxy 規則、沒關任何 port**（這些屬於會打到正式服務的動作，等你在
-  下面兩項之間做決定）。
-- 唯一動過的正式動作（本輪較早、為了排除「版本沒更新」這個變數）：用 Komodo stack 路徑
-  `docker compose pull && up -d` 把 **123** 與 **o3** 的 redlib 都換成新 pin 的 digest，並用
-  `docker inspect` 的 `running_id` 驗證。123 現在是 ddit 的 origin（`someZT:8080`）、
-  貼文頁實測 130 則留言；o3 的那個容器現在**不在任何 ddit 路徑上**（只剩裸 IP 可達，見 §3.1）。
+- **已動的雲端規則（2026-10-27）**：`tcp/8443` 與 `tcp/8080` 的來源從 `0.0.0.0/0` 縮成 `10.0.0.0/16`（改前整份清單快照在她的 repo：`o3_stuffs/OCI/snapshots/security_list_pre_8443_fix_20261027_223232.json`、`security_list_pre_8080_fix_20261027.json`；讀回 ingress 28／egress 1 不變）。**沒有**動任何 Zoraxy 規則、沒有動 redlib 或 code-server 的 port 綁定，也沒有動 `8880`／`2052-2096`（等她決定）。
+- **她動的 DNS（不是我動的）**：`code.avpclub.uk` 的 CNAME 從舊 CF Tunnel 改成 `o3.avpclub.uk`（proxied），讓 code-server 改由 Zoraxy 代理；`ddit.avpclub.uk` 仍是 CNAME → `o3.avpclub.uk`（proxied），redlib 的路徑沒變（複測 200）。
+- **redlib 兩台的綁定仍是 `0.0.0.0`**（`0.0.0.0:8084->8080`）：現在連裸 IP 從 internet 也打不到，只是因為**雲端清單沒有 `8084` 這條規則**，不是因為綁定正確 ⇒ 就是 P1/P2 那兩條要收的介面綁定問題（改成綁 ZeroTier/LAN，別讓防禦只剩一條雲端規則）。
+- 本輪較早為了排除「版本沒更新」這個變數做過的動作：用 Komodo stack 路徑 `docker compose pull && up -d` 把 **123** 與 **o3** 的 redlib 換成新 pin 的 digest，並用 `docker inspect` 的 `running_id` 驗證。123 現在是 ddit 的 origin（`someZT:8080`）、貼文頁實測 130 則留言；o3 的那個容器不在任何 ddit 路徑上（見 §3.1、§3.6）。

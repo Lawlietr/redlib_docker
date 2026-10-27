@@ -105,7 +105,7 @@ BuildKit（docker 29 預設）下用 cache mount 把 cargo 狀態提到 host 持
 ## 遷移
 - **Forgejo 端零改動**：註冊資訊（uuid/token）在 runner 側（`/opt/forgejo-runner/`），
 遷移 = 搬整個目錄到新機器（新機器需 docker + 可達 124:3000 + 磁碟 ≥30G）。
-- 舊新兩台同時 online 且 label 相同會重復接單 → 新機上線後停舊機，必要時在 UI 刪舊 runner 紀錄（清單，非設定）。
+- 舊新兩台同時 online 且 label 相同會重複接單 → 新機上線後停舊機，必要時在 UI 刪舊 runner 紀錄（清單，非設定）。
 
 ## 部署後驗證
 > **2026-09-18 已全部驗證通過**（首次 build+push 成功、映像公開可 pull、12 機磁碟持平）。
