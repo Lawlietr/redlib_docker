@@ -71,7 +71,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | [#577](https://github.com/redlib-org/redlib/pull/577) | Reddit onion service（`REDLIB_USE_TOR`），base = 現行 main，2026-10-07 仍活躍 | 與先前「不採用 fork 的 Tor」決策同類，但這是上游原生、env 可關；抗 Reddit 封鎖 → 需明確決策 |
 | [#564](https://github.com/redlib-org/redlib/pull/564) | 每頁文章數可設定（`REDLIB_DEFAULT_POSTS_PER_PAGE`） | 上游自標 **WIP**，暫不取 |
 | [#578](https://github.com/redlib-org/redlib/pull/578) | 依 client 要求回 Markdown | +458/−41、15 檔，先觀望 |
-| [#603](https://github.com/redlib-org/redlib/pull/603) `6cd8366a`（2026-10-24 開，**未 merge、0 review**） | 留言改走 Reddit 的 Android `PostComments` **persisted GraphQL**（`gql-fed.reddit.com`，hash `314f29c2…`），**取代**（不是補上）shreddit 那條路：新檔 `src/gql.rs` +635、`post.rs` 只改那行 fetch（`json(path)` → `gql::thread(path)`）、`lib.rs`/`utils.rs`/`templates/{post,comment}.html` 各 1–4 行；**完全不碰 `Cargo.toml`/`Cargo.lock`**（零新相依） | **2026-10-27 已實測評估，判定：現在不 bake**（§8.14）。要點：它跟 #599 **互斥**（同一行 fetch，两支同時 bake 時 `src/post.rs` 與 `templates/post.html` 都衝突，且不管誰先誰後都衝突）；在出口可用的 123 上它**能動而且比 #599 快 2.7–4×**、並用 `cursor` 真的突破 200 則上限（下一頁 200/58,810 B/51 則/0.36s），但**在 o3（機房 ASN）留言 0 則**、錯誤頁與「沒有 #599」的對照映像**逐位元組相同** → 救不了我們真正壞掉的那台；且它依賴 Reddit **未文件化的 Android persisted-query hash**（與 #599 同一脆度等級，hash 一輪替就又壞）。重啟評估的觸發條件見 §8.14。
+| [#603](https://github.com/redlib-org/redlib/pull/603) `6cd8366a`（2026-10-24 開，**未 merge、0 review**） | 留言改走 Reddit 的 Android `PostComments` **persisted GraphQL**（`gql-fed.reddit.com`，hash `314f29c2…`），**取代**（不是補上）shreddit 那條路：新檔 `src/gql.rs` +635、`post.rs` 只改那行 fetch（`json(path)` → `gql::thread(path)`）、`lib.rs`/`utils.rs`/`templates/{post,comment}.html` 各 1–4 行；**完全不碰 `Cargo.toml`/`Cargo.lock`**（零新相依） | **2026-10-27 已實測評估，判定：現在不 bake**（§8.14）。要點：它跟 #599 **互斥**（同一行 fetch，兩支同時 bake 時 `src/post.rs` 與 `templates/post.html` 都衝突，且不管誰先誰後都衝突）；在出口可用的 123 上它**能動而且比 #599 快 2.7–4×**、並用 `cursor` 真的突破 200 則上限（下一頁 200/58,810 B/51 則/0.36s），但**在 o3（機房 ASN）留言 0 則**、錯誤頁與「沒有 #599」的對照映像**逐位元組相同** → 救不了我們真正壞掉的那台；且它依賴 Reddit **未文件化的 Android persisted-query hash**（與 #599 同一脆度等級，hash 一輪替就又壞）。重啟評估的觸發條件見 §8.14。
 
 ## 4. Tier 3：不採用（記錄理由，避免重複評估）
 
@@ -97,7 +97,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | 檔 | 角色 |
 |----|------|
 | `redlib-prs.txt` | **唯一 PR 清單**（PR 編號 + 分析時 head SHA + 一行說明） |
-| `.build/apply_redlib_prs.sh` | 在 clone 好的 redlib 樹上依清單 `git fetch pull/<n>/head` + `git merge --no-ff`；head 漂移會 warn，衝突直接失敗。⚠ **列在 `redlib-prs.txt` 的 SHA 預設只是「漂移警示」，不是版本鎖定**：建置永遠拿 PR 的當前 head（2026-10-27 親身踩到：用旧 pin 做 A/B，結果兩邊都 build 到新 head，只差一行 `warning:`）。要真的重現過去某一組 bake 組合，用 `--at-listed-sha`（它會 `fetch pull/<n>/merge` 再取 PR 側 parent，因為 `refs/pull/<n>/head` 永遠只有最新 head）；實測能解析 `0db637cd` 並重建出 719 行的 `src/shreddit.rs` |
+| `.build/apply_redlib_prs.sh` | 在 clone 好的 redlib 樹上依清單 `git fetch pull/<n>/head` + `git merge --no-ff`；head 漂移會 warn，衝突直接失敗。⚠ **列在 `redlib-prs.txt` 的 SHA 預設只是「漂移警示」，不是版本鎖定**：建置永遠拿 PR 的當前 head（2026-10-27 親身踩到：用舊 pin 做 A/B，結果兩邊都 build 到新 head，只差一行 `warning:`）。要真的重現過去某一組 bake 組合，用 `--at-listed-sha`（它會 `fetch pull/<n>/merge` 再取 PR 側 parent，因為 `refs/pull/<n>/head` 永遠只有最新 head）；實測能解析 `0db637cd` 並重建出 719 行的 `src/shreddit.rs` |
 | `Dockerfile` | `COPY redlib-prs.txt .build/apply_redlib_prs.sh` → clone（`--depth 300`）→ 呼叫腳本。**本地 build 與 GitHub Actions amd64 build 都走這條** |
 | `.forgejo/scripts/build_and_push.sh` | 多架構路徑不用 Dockerfile，故 clone 後**另外**呼叫同一支腳本（兩條路徑內容必須一致） |
 | `.forgejo/workflows/build.yml`、`.github/workflows/build.yml` | 觸發路徑含 `redlib-prs.txt`、`.build/**` |
@@ -130,7 +130,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
   - [ ] 留言缺 author flair / awards（外观退步，非功能错误）
 - [x] **#599 pin bump 2026-10-27（`0db637cd` → `26c02193`）**（本地 build + 出口可用機器上的容器 A/B，全部跑完）：
   - [x] 本地 `docker build` exit 0，log 出現 6 行 `Merging PR #<n>` 且**無 `warning:`**（pin 已對齊 head，不再報 `head moved`）
-  - [x] **真正的對照組要用 `--at-listed-sha` 才建得出來**：直接拿旧 pin 跑 `docker build` 會**靜默 build 到新 head**
+  - [x] **真正的對照組要用 `--at-listed-sha` 才建得出來**：直接拿舊 pin 跑 `docker build` 會**靜默 build 到新 head**
         （兩邊 image ID 完全相同 = `1f386abe78a8`，只有 `warning:` 一行線索）。用
         `docker build --build-arg BAKE_ARGS=--at-listed-sha` 才產出 pin 在 `0db637cd` 的映像（ID `9f8a10cb6e87`）。
   - [x] **A/B（出口可用機器，同一 sub、同一刻、同一個 3.8k 留言的討論串）**：
@@ -150,7 +150,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
   - [x] 新 head 其他 §7 項目：留言 permalink `…/<cid>/?context=3` → 200 / 57.5 KB / 49 則留言、目標留言在頁上；
         三種留言排序塊數各不同（confidence 216 / new 220 / top 280）；不存在的 post → 404 +
         `Reddit error 404 "null": "Not Found"`（不是 parse error）；錯的 sub + 對的 post id → **仍然 200 並渲染別篇文章**
-        （§8.12 的缺陷在新 pin 依旧存在）；冷 2.91s / 熱 0.013s；panic 0。
+        （§8.12 的缺陷在新 pin 依舊存在）；冷 2.91s / 熱 0.013s；panic 0。
   - [x] **第二輪 A/B（2026-10-27，三映像、兩台機器，答「#603 要不要 bake」）**：
         對照 = 正式 `:24f7dce`（含 #599）、實驗 A = **去掉 #599**（只留其餘 5 支，仍含上游 `0a3e9cd` 的 `%2F` 繞行）、
         實驗 B = **把 #599 換成 #603**（`gql::thread()`）。三支配方都是同一條 bake 鏈（`apply_redlib_prs.sh`）產出，
@@ -218,7 +218,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 
 12. **#599（shreddit fragment）——貼文頁留言的目前唯一可行上游方案，但它不是根治，也不完整**（2026-10-23 bake）：
     - **背景**：Reddit 把匿名 client 的 comments API 全數 403，**连帶 `%2F` 编码繞行也被破**（上游 v0.40.0 的 `0a3e9cd` 失效）。
-      定因方式：线上 `/`、`/r/popular` = 200，貼文頁 = 404 + parse error（`…/.json?&raw_json=1`）→ 仍是**按路徑**的封鎖。
+      定因方式：線上 `/`、`/r/popular` = 200，貼文頁 = 404 + parse error（`…/.json?&raw_json=1`）→ 仍是**按路徑**的封鎖。
       本機 curl 對 Reddit 所有端點（含 `by_id`、`/svc/shreddit/`）一律 403 同一份 block page → 對本機 IP 而言裸 curl **無區辨力**（playbook 假陰性）。
     - **機制**：貼文走 `/by_id/t3_<id>.json`；留言走 `www.reddit.com/svc/shreddit/comments/r/<sub>/t3_<id>[/t1_<cid>]`，
       用 `scraper` 把 `<shreddit-comment>` 重建為原 JSON 形狀（`parse_comments`/模板不改）；「More replies」以 `more-comments` POST + 隱藏 `cursor`
@@ -228,7 +228,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
       （b）captcha 頁的 title 字串改寫（它靠字面比對判 captcha，一改就會把 challenge 頁當留言內容解析）；（c）`by_id/t3_<id>.json` 也被封。
     - **observable（下次要 grep 的）**：`Reddit returned <status> | /svc/shreddit/...`（(a)/(c)）、
       `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`（配額耗盡）、
-      `Refusing to fetch non-shreddit path`（路徑守衛）、旧的 `Failed to parse page JSON data: expected value at line 1 column 1`（`by_id` 也被封）。
+      `Refusing to fetch non-shreddit path`（路徑守衛）、舊的 `Failed to parse page JSON data: expected value at line 1 column 1`（`by_id` 也被封）。
     - **已知不完整（本機實測）**：留言 200 則上限（大讨論串剩 93–106 個未展開殘根）；留言無 author flair/awards；
       每個未 cache 的貼文頁 1–31 個請求（**冷 3.07s / 熱 0.019s**，listing 0.74s）；`SHREDDIT_SESSION` 是 process-global
       → 同實例所有訪客共用一份配額；**subreddit 名稱不再被驗證**（錯 sub + 對 post id 回 200 並渲染別篇文章）；

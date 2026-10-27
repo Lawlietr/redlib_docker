@@ -25,11 +25,23 @@
 - **優先級**：P2（不阻塞使用，但直接影響排障成本與 patched 上線時效）。
 - **參考**：`design/error-triage-playbook.md` §4.2 的「步驟 0」（指令與這次的實測數據）。
 
-## P2 — 裸 IP 公開的 redlib 與「假 TW-only」（兩個暴露面）
-- **做什麼**：(1) 把 `http://o1PublicIP:8084/`（o1）與 `http://o3PublicIP:8084/`（o3）從「任何人用裸 IP 就能用」收回去：改成只綁 ZeroTier/LAN，或把 o1 那台（舊 pin、貼文頁全壞的幽靈實例）直接停掉；順帶清掉 Zoraxy `ddit` 規則裡的 `InactiveOrigins`（已死的 `10.0.0.134:8084`、`o1ZT:8084`、`o1ZT:8095`）。**(2) 2026-10-27 已部分處理**：`Enable Trusted Proxy Gating` 已開（`b6f4dd52` 與 `ZoraxyFilterID` 兩條 filter 現在都是 `TrustProxyHeadersOnly: true`），並把白名單 `Taiwan White`（`b6f4dd52`）掛到 `ddit`；複驗：TW 出口 200、JP 出口（o3 公網）403、裸 IP 進入 403。**殘留兩項**：(a) `WhitelistAllowLocalAndLoopback=false` 且 `10.147.17.0/24` 不在白名單 → **ZeroTier／LAN／loopback 現在進不去 ddit，break-glass 消失**，要加 CIDR 或開 LAN/Loopback；(b) JP 出口的監控（Uptime Kuma／Beszel）對 ddit 會開始回報 403，要嘛白名單其出口 IP，要嘛讓監控直打 `123:8080`。原本掛在 ddit 的黑名單 `ZoraxyFilterID-…`（`RU CN MX Blacked`）其實是 `BlacklistEnabled=true` / `WhitelistEnabled=false` 的黑名單，以前 gating 沒開時從 JP 出口打得進 200 → 若要真正的 TW-only，**先**在那條 filter 上打開 **Enable Trusted Proxy Gating**（否則 Zoraxy 拿 CF 邊緣节點的國家去判，白名單會連你自己都 403），再留 `tw` +self 的 IP 白名單；或改在 nx 用 `CF-IPCountry` 實作。同一個坑的實測對照表與 Zoraxy 原始碼引用見 `design/reverse-proxy-front.md` §3.3；掛了 `Taiwan White` 的 `note.avpclub.uk` **目前就是壞的狀態**（透過 CF 一律 403，只有繞過 CF 直連 o3 才 200）。另：`conf/log_conf.json` 是 `enabled:false`，access log 全空，排障前要先在 UI 打開。
-- **為什麼**：裸 IP 的 HTTP 端點等於多兩台不受域名過濾的實例（其中一台還是舊 pin、全壞），而且「Taiwan Only」這個描述現在**不成立**——任何非 CN/MX/RU 的訪客都進得來，這與我們以為的政策相反。
-- **優先級**：P2（正式服務沒壞，但政策與暴面和認知不一致；處理前會碰到入口層，需在場確認）。
-- **參考**：`design/reverse-proxy-front.md` §3（實測與檔位）、§4（nx 上的 TW-only 寫法）。
+## P1 — o3 的 code-server 對整個 internet 開放（純 HTTP），且管理面只靠一條雲端規則
+- **做什麼**：把 o3 上以 `0.0.0.0` 對外公佈、但目前只靠雲端規則擋住的管理型服務收回來：先處理 **code-server**
+  （移掉雲端那條 `8443` 的 ingress，改從 ZeroTier 進；或把 port 改綁 ZT 介面——o1 的測試實例已經是這種綁法，照抄），
+  再依同樣方式收 Portainer、Komodo periphery、Beszel、PeekApping、Vaultwarden；順帶把紅燈清單上的
+  `8080`（release monitor）確認成刻意開放。
+- **為什麼**：2026-10-27 從外部出口實測掃描：code-server 的登入頁從 internet 直接可取，且是**明文 HTTP**
+  （無 rate limit、可 sniff 憑證），而它登入成功就是那台 host 上的完整 shell —— 比 redlib 的暴露嚴重得多。
+  其餘管理面今天「看不到」只是因為雲端 ingress 沒開，不是因為它們綁在內部介面；一條誤加的規則就全開。
+- **優先級**：**P1**（正式服務不受影響，但這是這次掃描裡唯一的遠端執行面風險）。
+- **參考**：`design/reverse-proxy-front.md` §3.4（外部 port 掃描矩陣、本機對照組、為什麼她的 host 端來源規則管不到容器埠）。
+
+## P2 — redlib 的裸 IP 端點與 TW-only 政策（前提已用實測更正）
+- **做什麼**：(1) 把 o1/o3 上 redlib 的 `8084` 從 `0.0.0.0` 改綁 ZeroTier/LAN（或直接把 o1 那個舊 pin 的幽靈實例停掉），讓它不依賴雲端規則；順帶清掉 Zoraxy `ddit` 規則裡的 `InactiveOrigins`（已死的 `10.0.0.134:8084`、`o1ZT:8084`、`o1ZT:8095`）。
+- **已更正的前提**：原本寫「任何人用裸 IP 就能用」——**從 internet 並非如此**（2026-10-27 從非白名單的 JP 出口掃：o1/o3 的 8084 全部 closed/filtered，而本機與走 ZeroTier 都是 200）。真正擋住的是**雲端 security list**，不是她 host 端那條「對 `她的自宅公網IP` 全開」（那條只作用在 host-local，不作用在容器埠）。所以這條的性質從「多兩台公開實例」改成「綁錯介面、防禦只剩一條雲端規則」。
+- **2026-10-27 已處理的部分**：`Enable Trusted Proxy Gating` 已開（兩條 filter 都是 `TrustProxyHeadersOnly: true`），白名單 `Taiwan White` 已掛到 `ddit`；複驗 TW 出口 200、JP 出口 403、裸 IP 進入 403。break-glass 也已恢復（她開了 LAN/loopback：ZeroTier 與 loopback 進 `ddit` 都 200）。**(b) 仍未處理**：從 JP 出口的監控對 `ddit` 會回報 403，要嘛白名單其出口 IP，要嘛讓監控直打 `123:8080`。另：`conf/log_conf.json` 是 **log rotation** 設定，不是 access log 開關——請求記錄一直在寫（在輪轉檔裡），先前「access log 全空」的說法已更正。
+- **優先級**：P2（正式服務沒壞；但政策與暴面的認知 previously 相反，現已用實測對齊）。
+- **參考**：`design/reverse-proxy-front.md` §3.3（白名單/gating 實測與 Zoraxy 原始碼引用、access log 的正確位置）、§3.4（外部掃描矩陣）、§4（nx 上的 TW-only 寫法）。
 
 ## P3 —（選用）把前門從 o3 搬到 nx 的 nginx：可用但非必要，附完整配方與代價
 - **做什麼**：現階段**不做**。要做時照 `design/reverse-proxy-front.md` §4：DNS 只改一行（`ddit` CNAME `o3.avpclub.uk` → `hm.avpclub.uk`，保持 proxied），nx 新增 vhost（通配證已在 `/etc/nginx/ssl/*.avpclub.uk_avpclub.uk_EC256/`）`proxy_pass http://192.168.1.123:8080`，TW 過濾用 `CF-IPCountry`（nx 目前**沒有** `set_real_ip_from`/`real_ip_header`，且只有舊 GeoIP v1 db、沒有 GeoLite2 mmdb），並保留 o3 的 Zoraxy 規則當備援。

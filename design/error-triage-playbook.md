@@ -208,11 +208,11 @@ ssh 123 'docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" redlib; \
    grep -o 'Reddit returned [^<]\{0,80\}\|Reddit error [^<]\{0,60\}' /tmp/t.html | sort -u
    docker logs --since 10m redlib 2>&1 | tail
    ```
-3. **看錯誤訊息有沒有 `| <path>` 字尾來分层**（bake #599 之後必學，兩種死法不同層）：
+3. **看錯誤訊息有沒有 `| <path>` 字尾來分層**（bake #599 之後必學，兩種死法不同層）：
 
    | 頁面/log 上的訊息 | 失敗的是哪一步 | 來源 | 結論 |
    |---|---|---|---|
-   | `Failed to parse page JSON data: expected value at line 1 column 1 \| /by_id/t3_<id>.json…`（或旧版的 `…/comments/…json`） | 貼文本體（OAuth JSON） | `client.rs` 的 `json()` | 上游那段被封／bake 未生效 |
+   | `Failed to parse page JSON data: expected value at line 1 column 1 \| /by_id/t3_<id>.json…`（或舊版的 `…/comments/…json`） | 貼文本體（OAuth JSON） | `client.rs` 的 `json()` | 上游那段被封／bake 未生效 |
    | `Reddit returned <status> \| /svc/shreddit/comments/r/<sub>/t3_<id>` | **留言 fragment**（貼文本體已成功，所以 post 有渲染、只有留言區空） | #599 的 `shreddit_body()`（`src/client.rs:341`） | **#599 有在跑**，是 fragment 端點吃 403 |
    | `Reddit is rate limiting comment requests. Try refreshing in a few seconds.` | 配額耗盡（同一 process-global session） | 同上 | 不是封鎖，是限流 |
 

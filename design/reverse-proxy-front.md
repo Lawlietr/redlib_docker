@@ -185,6 +185,52 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
   加上實測 A/B。上游 main 已經讓 log 也走 gating-aware 解析（`proxyRequestHandler.go:394`），升級後兩者才會一致。
 
 
+### 3.4 外部暴露面（2026-10-27 實測掃描，來源＝o2 的 JP 出口 `o2PublicIP`，非白名單 IP）
+
+**她的判斷正確：`8084`（redlib）從外部打不到。** 對照組（證明是「外部被擋」而不是「沒在聽」）：
+
+| 探測 | 結果 |
+|---|---|
+| o1 本機 `127.0.0.1:8084` | **200 / 60,884 B**；走 ZT `o1ZT:8084` → **200** |
+| o3 本機 `127.0.0.1:8084` | **200 / 60,884 B** |
+| 從 internet（o2 JP）→ `o1:8084` / `o3:8084` | **closed/filtered** |
+
+但**擋住它的不是她以為的那條「對我的外網 IP 全開」**。實測到的真正邊界是 **Oracle VCN security list / NSG**：
+
+- `docker ps` 顯示這些埠都是 `0.0.0.0:` 對外公佈（redlib 是 `0.0.0.0:8084->8080/tcp`），也就是**真的綁在公網介面**上。
+- o3 的 `firewall-cmd --list-all`（public zone）**完全沒有 ports**，只有兩條 rich rule：`source address="她的自宅公網IP/32" accept`、`"10.147.17.0/24" accept`；而 `443/8080/8443/25/587` 從 internet 卻都通。
+  → container 的 port 走的是 **FORWARD → firewalld 的 `docker` zone**（`firewall-cmd` 自己也會警告 interfaces 在 `docker` zone），
+    **不經過 INPUT**；她那兩條 source-accept 只作用在 **INPUT**（SSH 等 host-local 服務）。
+- 所以：**「對 `她的自宅公網IP` 全開」管的是 SSH／host-local，不是 container 埠**；container 埠能不能被外部碰到，只取決於 Oracle 的安全清單 ingress。
+
+實測 port 矩陣（internet → Oracle 公網 IP）：
+
+| host | internet 可達 | internet 不可達（已測） |
+|---|---|---|
+| **o3** `o3PublicIP` | `22`(ssh)、`25`/`587`(aliasvault SMTP)、`443`(Zoraxy＝ddit 前門)、`8080`(**github-release-monitor**，307→`/en`)、**`8443`(`code-server`)** | `80`(Zoraxy HTTP)、**`8000`(Zoraxy 管理 UI，已鎖好)**、`8084`(redlib)、`3003`/`3005`/`3033`/`3125`/`446`/`6556`/`8001`/`8003`/`8083`/`8085`/`8090`/`8110`/`8120`/`8383`/`8445`/`9993`/`1828`/`853`/`55987` |
+| **o1** `o1PublicIP` | `22`(ssh)、`1828`(`mtproto-proxy`，Telegram proxy，刻意開放) | `80`/`443`、`8084`(redlib)、`8090`(beszel)、`8095`(已綁 `o1ZT`)、`8120`(komodo-periphery)、`9001`(portainer)、`853`/`55987` |
+
+**掃描裡最值得處理的一項：`o3:8443` = `code-server`（VS Code 遠端），而且它是純 HTTP。**
+從 internet 實測 `http://o3PublicIP:8443/` → `HTTP/1.1 302 Found`、`Location: ./login`（29 B）；
+本機 `http://127.0.0.1:8443/` 同樣 `302`（`https://` 則 `UNKNOWN_PROTOCOL`，代表沒有 TLS）。
+`docker inspect code-server` 有 `HASHED_PASS`，所以是有密碼，但：
+1. 憑證走**明文 HTTP**（路徑上任何一跳可 sniff）；
+2. 沒有 rate limit／fail2ban，可被慢速 brute force；
+3. **登入成功＝一個 o3 上的完整 shell**（code-server 內建 terminal）＝RCE。
+它的風險遠高於 8084 那個無認證的 redlib。修法（她已用過的模式）：把 Oracle 的 `8443` ingress 拿掉，
+改從 ZeroTier 進 `http://o3ZT:8443`；或把 port 綁到 ZT 介面 —— o1 上的 `redlib-cu-test`
+已經是 `o1ZT:8095->8080/tcp` 這種寫法，照抄即可。
+
+**同一個原則適用於其他「只靠雲端規則擋住」的管理面**（目前都被 Oracle 規則擋著，但只要一條 ingress 加錯就全開）：
+`o1:9001` Portainer、`o1:8120`／`o3:8120` Komodo periphery、`o1:8090` Beszel、`o3:8383` PeekApping、
+`o3:8110` Vaultwarden、`o3:8000` Zoraxy 管理 UI。Portainer 與 Komodo periphery 都等於容器控制權，
+建議一律改綁 `127.0.0.1:` 或 ZT 介面，讓「防禦」不只依賴一條雲端規則。
+
+**另一個隱患**：`106.147.x`／`她的自宅公網IP` 是 Hinet 的**動態** residential IP。兩台 host 的 firewalld
+source-accept 與 Zoraxy 白名單裡的 `她的自宅公網IP/32` 都會在她 IP 換掉時悄悄失效
+（Zoraxy 那邊還有 `tw` 國家條件撐著，host 這邊則會直接連 SSH 從家裡進不去）。ZeroTier 才是穩定的那條路。
+
+
 ---
 
 ## 4. 若要搬回本地前門（nx = NGINX-UI 那台）——可用的配方
