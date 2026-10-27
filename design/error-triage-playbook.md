@@ -144,7 +144,7 @@ done
 
 事件：同一個 manifest digest（`sha256:73900bee…8932e` = 我們的 commit `ac3f175`，含 bake #599）
 部署在 **o3**（OCI VPS，出口 `o3PublicIP`，AS31898 Oracle，東京）與 **123**（內網，出口
-`她的自宅公網IP`，AS4780 DUI，台北 ADSL）。**123 貼文頁 200 / 153 則留言、log 零錯誤；
+（她的自宅公網 IP，值在 private repo），AS4780 DUI，台北 ADSL）。**123 貼文頁 200 / 153 則留言、log 零錯誤；
 o3 貼文頁 404、頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`**。
 
 ### 步驟 0：先證明「兩台真的在跑同一支映像」——否則 §4.2 的前提就不成立（2026-10-27 踩到）
@@ -183,7 +183,7 @@ ssh 123 'docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" redlib; \
 # 3) 想驗證「換一台跑 redlib 會怎樣」，就在那台跑臨時容器再打本機 port（別用裸 curl 連 reddit.com）
 ```
 
-- 這輪的實測：`ddit` 的 active origin 是 `someZT:8080` = **123 的 ZeroTier IP**，貼文頁 **200 / 150,701 B / 128 則**；
+- 這輪的實測：`ddit` 的 active origin 是 `<123 的 ZT IP>:8080` = **123 的 ZeroTier IP**，貼文頁 **200 / 150,701 B / 128 則**；
   同一貼文在 **o1 / o2 / o3 本機的 redlib** 都是 **404 / 0 則 + `Reddit returned 403 Forbidden | /svc/shreddit/…`**
   （三台皆 `AS31898 Oracle Corporation, Tokyo`），但三台的 **列表都 200**（路徑規則，不是整台被封）。
 - **o1／o2 也一起測掉了**：資源完全夠（2 vCPU、985MB RAM、27–33G free、redlib idle RSS 僅約 43MB），

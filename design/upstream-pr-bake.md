@@ -244,7 +244,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 13. **出口 IP 信譽是獨立於 code 的失敗層：同一個 digest，兩台實例結果相反**（2026-10-27 o3 vs 123 定因）：
     - 兩台都是**同一個 manifest digest** `sha256:73900bee…8932e`（= `ac3f175` 那次 CI，含 bake #599）：
       o3（OCI VPS，出口 `o3PublicIP`，**AS31898 Oracle**，東京；跑 `codeberg.org/lawlietr/redlib:latest`，arm64）
-      與 123（內網，出口 `她的自宅公網IP`，**AS4780 DUI**，台北 ADSL；跑 `ghcr.io/lawlietr/redlib:latest`，amd64）。
+      與 123（內網，出口 （她的自宅公網 IP，值在 private repo），**AS4780 DUI**，台北 ADSL；跑 `ghcr.io/lawlietr/redlib:latest`，amd64）。
       兩台的 `RepoDigests` 相同 → **變數不是 code**。
     - 結果：**123** 貼文頁 200 / 162 KB / 153 則留言、log 零錯誤；**o3** 貼文頁 404 / 6.5 KB，頁面寫
       `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/interesting/t3_1xgj…`（列表 `/r/popular` 仍是 200）。
@@ -263,7 +263,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
     - **redlib 沒有出口代理設定**：上游只有**進向**的媒體 proxy route（`main.rs` 的 `/img`、`/thumb`、`/hls`、`/vid`…），
       `src/` 內沒有任何 egress proxy 的 env 或代碼（2026-10-27 以 `git grep -i proxy` 在含 #599 的樹上確認）。
       → 「讓壞 IP 的實例走好的出口」只能做在**容器/主機層的 L3–L4 tunnel**（o3 與 123 兩台都看到 ZeroTier 的痕跡：
-      o3 有 `zerotier` 容器目錄與 `o3ZT` 介面、123 裝了 `zerotier-one`），不能指望 redlib 的 env 或 patch。
+      o3 有 `zerotier` 容器目錄與 <o3 的 ZT IP> 介面、123 裝了 `zerotier-one`），不能指望 redlib 的 env 或 patch。
       Tor 出口不是選項（123 上的 `tor-9050`/`tor_s` 不要拿來當地點：Reddit 封 Tor exit 比封機房更兇）。
     - **退出策略**：把該實例的 redlib 搬到有住宅出口的機器（123 已驗證可用），或接受該實例只有列表可用
       （貼文連結導到可用實例）。**不要**用重新編譯／換 env／重啟容器當解法——那是浪費時間。

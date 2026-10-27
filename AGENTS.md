@@ -114,7 +114,14 @@ Multi-stage build:
 | `REDLIB_BRANCH` | `main` | Branch to clone |
 | `BAKE_ARGS` | (empty) | Extra flags for `.build/apply_redlib_prs.sh`. Pass `--at-listed-sha` to build exactly at the SHAs listed in `redlib-prs.txt` (reproducing a past bake combination); default builds each PR's current head. |
 
-### Conventions
+### 公開倉庫紀律：不准出現機敏值（本 repo 是 public，GitHub + Codeberg 兩邊都是）
+
+- **禁止入庫**：token（cloudflared connector token、CF API token、`CODEBERG_PAT`、`ghp_*`、`gho_*`）、API 金鐰與 OCID、私錬鍰、凭證本體、叨內識別碼（group/tunnel **UUID**）、**她的住宅公網 IP**、**ZeroTier 主機位址**（只能寫 `10.147.17.0/24` 這種網路形式）、口令/密碼。
+- 需要引用時用**文字代替值**（`她的自宅公網 IP`、`<o3 的 ZT IP>`、`<群組 UUID（值在 private repo o3_stuffs）>`），或只写路徑。真值一律放 **private repo `o3_stuffs`**。
+- **工具輸出也算曝光**：`pgrep -a` / `ps aux` / `cat systemd unit` / `cat docker-compose.yml` / `docker inspect` 的輸出常常直接含 token 或口令（argv 全域可讀）⇒ 只取屬性不取字串，或先 `sed` 遮掩。2026-10-27 為止犯過兩次（connector token、code-server 明文口令）。
+- **推前必跑**：`.build/secret_scan.sh`（命中回 1）；清全屬性才推。歷史扫描用 `--history`（約 3–4 分鐘）。
+
+## Conventions
 
 - `apt-get --no-install-recommends`, drop package lists after install
 - `--locked` for Cargo builds; `--depth 1` for git clone
@@ -141,7 +148,7 @@ Multi-stage build:
 
 ### Front Door vs Egress (read before blaming a proxy or a "different machine")
 `design/reverse-proxy-front.md` holds the proven topology. Two rules that cost us two wrong diagnoses:
-- **反向代理／ZeroTier／Cloudflare 都在入口側，不影響 Reddit 看到的 IP。** 決定被封與否的是「**redlib 這個行程跑在哪一台**」的 egress。`ddit.avpclub.uk` 的入口是 o3 上的 Zoraxy（`conf/proxy/ddit.avpclub.uk.config`，`ActiveOrigins = someZT:8080`），但真正抓 Reddit 的是 **123**，所以它能動；o1/o2/o3 本機的 redlib 全被 `/svc/shreddit/` 打死（同 `AS31898` Oracle Tokyo）。
+- **反向代理／ZeroTier／Cloudflare 都在入口側，不影響 Reddit 看到的 IP。** 決定被封與否的是「**redlib 這個行程跑在哪一台**」的 egress。`ddit.avpclub.uk` 的入口是 o3 上的 Zoraxy（`conf/proxy/ddit.avpclub.uk.config`，`ActiveOrigins = <123 的 ZT IP>:8080`），但真正抓 Reddit 的是 **123**，所以它能動；o1/o2/o3 本機的 redlib 全被 `/svc/shreddit/` 打死（同 `AS31898` Oracle Tokyo）。
 - **放在 Cloudflare 後面的國家黑/白名單必須先開 access filter 的 Trusted Proxy Gating**，否則 Zoraxy 判的是 CF 邊緣節點的國家（US/NL/AU/CR），等於完全沒在過濾；開了它才會讀 `CF-Connecting-IP`。實測與原始碼行號：`design/reverse-proxy-front.md` §3.3。
 - **比較兩台之前先證明「兩台在跑同一支映像」與「redlib 在哪台」**（`docker inspect --format "{{.Image}}"`、Zoraxy 規則的 `ActiveOrigins`）。雲主机（o1/o2/o3）資源都夠跑 redlib（idle RSS 約 43MB），但只有出口乾凈的機器能用。
 
