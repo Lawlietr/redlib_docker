@@ -41,6 +41,22 @@ line. That failure mode is egress IP reputation, not code, and a pin bump cannot
 CDN in front of the instance does not help either, because the request to Reddit leaves the box itself.
 Symptom mapping and the two-box probe procedure: `design/error-triage-playbook.md` §4.2.
 
+**The shreddit path is load-bearing — measured, not inferred.** Upstream formally closed the older
+percent-encoding PR (the one this repo already retired on 2026-10-22) **unmerged** on 2026-10-21, which needs
+no action here: its commits are still not patch-equivalent in `main` (`git cherry -v` shows them as `+`), and
+upstream supplies the equivalent trick as its own commit. The same check also settled an open question: an image
+built from the identical bake list with the shreddit PR **removed** returns no comments at all — 404 plus a parse
+error on every thread, on both of our instances. So upstream's `%2F` workaround is dead in our environment too,
+and **the shreddit PR must not be dropped just because it is a workaround**.
+
+**Upstream #603 (GraphQL comment fetch) was evaluated and deliberately not baked** — no image content change.
+It replaces the shreddit path rather than adding to it (both edit the same fetch line; merging both conflicts in
+either order), it still renders 0 comments on the instance whose egress IP Reddit blocks, and it swaps one
+undocumented Reddit dependency for another (an Android persisted-query hash, `gql-fed.reddit.com`). Measured
+upsides, for the record: on a host with a working egress it renders correctly, is 2.7-4x faster per thread page,
+and really paginates past the 200-comment ceiling via a `cursor` link. Re-evaluation triggers:
+`design/upstream-pr-bake.md` §8.14.
+
 ---
 
 ## 2026-10-23 — thread pages work again via upstream PR #599 (**workaround, and not a complete one**)

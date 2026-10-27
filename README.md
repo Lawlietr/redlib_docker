@@ -133,9 +133,14 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > （`0a3e9cd fix: encode anonymous comments request paths`，把 subreddit 與 `comments` 之間的斜線編成 `%2F`）。
 > 本 repo 只做「合併與打包」而非 fork，判定標準是「該 PR 有沒有被上游合併」；#592 作為 PR 從未整合、
 > 但上游已用同一招補上，保留它只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故**已將 #592 從 bake 清單退役**，
-> 其餘五支（#549、#542、#521、#560、#539）v0.40.0 一個都沒含，正常 bake。#592 的 thread-403 workaround
 > 因此改由上游版本供應——它仍是 workaround 不是 root fix，re-break 風險與 observable（`client.rs` 的
 > block / 解析錯誤）不變。
+>
+> **2026-10-27 更新：#592 已被上游正式關閉（未 merge），但我們不需要做任何事。** 維護者在 2026-10-21 直接
+> close 該 PR（`mergeable=false`、0 review），它的兩支 commit **從未**以 patch-equivalent 進 `main`（`git cherry -v`
+> 檢查兩支都還是 `+`），而我們的「改用上游等效 commit、把 #592 退役」判定到現在都正確。同一輪也把上游那個
+> `%2F` 繞行**正式判死**：用同一份清單**拿掉 shreddit 那支 PR** 建的對照映像，在**兩台機器、四條貼文上都拿不到留言**
+> （404 + parse error）→ 代表 **shreddit 那支 PR 是 load-bearing**，不能因為它是 workaround 就移除。
 >
 > **2026-10-23 追加 bake：#599（⚠ 未完全解決問題）**
 >
@@ -169,6 +174,13 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > `Reddit returned <status> | /svc/shreddit/...`、`Reddit is rate limiting comment requests...`、
 > `Refusing to fetch non-shreddit path`，或舊的那串 parse error（代表 `by_id` 也被封）。
 > 分級與判定依據：`design/upstream-pr-bake.md` §2、§8.12。
+>
+> **2026-10-27 評估：上游 #603（留言改走 Android persisted GraphQL）——判定不 bake。** 它把 #599 那條路**取代**而非補上
+> （兩者改同一行留言 fetch，同時 bake 一定衝突），所以這是**二選一**而不是加一支。實測（三支配方同一條 bake 鏈、兩台機器）：
+> 在出口不被擋的機器上 #603 **能動而且快 2.7–4×**（同貼文 1.02s vs 2.42s；1.13s vs 3.06s）並用 `cursor` 真的突破每頁
+> 200 則上限（下一頁 200 / 58,810 B / 0.36s），但它**在被 Reddit 擋出口 IP 的那台上照樣 0 則留言**，而且把依賴從
+> 「未文件化的 HTML fragment」換成「未文件化的 GraphQL persisted query hash」（同級脆弱、少一條退路）、每頁留言數
+> 240 → 200。重啟評估的三個觸發條件與全部數據見 `design/upstream-pr-bake.md` §8.14。
 
 > **2026-10-27 pin 更新（`0db637cd` → `26c02193`）**：#599 在我们首次 bake 之後又多三支 commit ——
 > `rdt` bot-check 的 302 不再報錯、留言裡的 GIF/影片從空的可點方塊變成原生 `<video>`、以及**最要緊的一支**：
@@ -176,7 +188,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 每個 fragment 只給 10 則留言（桌面 25 則）→ 新 pin 補上瀏覽器 headers 並讓 shreddit 用**自己的桌面 client**。
 > 也就是说：**現行已發佈的映像（pin `0db637cd`）正處於「留言展開被抑 / 每頁只有十則」的退化狀態**。
 > 新 head 只碰 `src/client.rs` 與 `src/shreddit.rs`，**`Cargo.toml`/`Cargo.lock` 零變化** → 相依與映像體積不變。
-> 仍**未修**：留言圖片 overflow 容器（上游 2026-10-27 回報，之後零 commit）、200 則上限、其余 §8.12 缺口。
+> 仍**未修**：留言圖片 overflow 容器（上游 2026-10-27 回報，之後零 commit）、200 則上限、其餘 §8.12 缺口。
 
 > ⚠ **`redlib-prs.txt` 裡那欄 SHA 只是「漂移警示」，不是版本鎖定**：建置一律拿 PR 的**當前** head
 > （`refs/pull/<n>/head` 永遠只有最新 head）。要重現過去某一組 bake 組合，用
@@ -186,7 +198,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > ⚠ **換 pin 不會修好「出口是機房 IP」的實例**：同一個 digest 在 OCI（Oracle 出口）上贴文頁照样 404，
 > 頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`，而住宅出口的機器完全正常
 > → 那是**出口 IP 信譽**，不是 code。掛 Cloudflare CDN 也不會改变（CDN 代理的是**進向**；
-> redlib 打 Reddit 的請求由該機器自己直接發出，不经过 CF）。判別 SOP：`design/error-triage-playbook.md` §4.2、
+> redlib 打 Reddit 的請求由該機器自己直接發出，不經過 CF）。判別 SOP：`design/error-triage-playbook.md` §4.2、
 > `design/upstream-pr-bake.md` §8.13。
 
 ## 映像標籤（Tags）

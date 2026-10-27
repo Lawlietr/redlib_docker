@@ -135,6 +135,8 @@ Multi-stage build:
   - Current Tier 1: #549 (CMAF + rich:video), #542 (0-comment panic), #521 (default post sort), #560 (`/u/:name/s/:id` share links — **known broken, upstream's id-length guard rejects current 7-char post ids; deliberately deferred, do not claim this works**, see `design/upstream-pr-bake.md` §8.9), #539 (lazy-load images), #592 (thread pages: percent-encode the single `/comments` slash — **a workaround for Reddit's anonymous-thread block, not a real fix**; see `design/upstream-pr-bake.md` §8.8).
   - ⚠ The 2026-09-18 note claiming those PRs were "merged into upstream main (up to `8167e00`)" was **wrong**: `8167e00` was our own in-build merge tip, not an upstream commit. Upstream `main` (HEAD `a4d36e9`, 2026-04-24) contains none of them — re-verified 2026-10-07 with `git cherry` + content grep.
   - #509 (hyper-tls) stays out: superseded by main's wreq migration.
+  - **The thread-page fix from upstream main (the percent-encoding workaround shipped as a direct commit in v0.40.0) is confirmed dead in our own environment** (2026-10-27 three-image A/B: an image built from the same list with the shreddit PR *removed* returns 404 + a parse error and zero comments on **every** thread, on both boxes). So the shreddit PR is **load-bearing**: never drop it just because it is a workaround. Upstream formally **closed that older percent-encoding PR unmerged on 2026-10-21** (never merged, never patch-equivalent in main per `git cherry`) — this repo already retired it on 2026-10-22, so **its closure needs no action here**.
+  - **PR #603 (GraphQL comment fetch) was evaluated on 2026-10-27 and deliberately NOT baked** — it is a mutually exclusive replacement for the shreddit path (same fetch line in the post handler; git conflicts with the current list in both merge orders), it does not rescue the instance whose egress IP Reddit blocks, and it trades one undocumented Reddit dependency for another (an Android persisted-query hash). Measured pros: 2.7-4x faster, and real cursor pagination past the 200-comment ceiling. Trigger conditions for re-evaluating: `design/upstream-pr-bake.md` §8.14.
 - Build: `cargo build --release --locked --bin redlib`
 
 ### Error Triage (runtime bug reports)
@@ -147,6 +149,7 @@ When a user reports a broken page or a runtime error message, follow `design/err
   playbook §4.2 has the two-box probe (browser-grade headers against `/svc/shreddit/...`; residential 200 vs hosting-ASN
   403). No pin bump, env change or container restart fixes it, and a Cloudflare CDN does not help (it only fronts inbound
   traffic) — see `design/upstream-pr-bake.md` §8.13.
+- Two instances on the same digest can also differ because one is **not actually running that digest**: both production stacks here are Komodo-managed compose stacks, and `watchtower` does not cover `redlib` on the amd64 box (its container list has no redlib) while the other box polls only every 6h. Check the running container's image id before debugging (playbook §4.2 step 0).
 
 ### Environment Variables (Runtime)
 

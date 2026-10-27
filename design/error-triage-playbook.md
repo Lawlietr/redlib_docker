@@ -23,7 +23,7 @@
 ## 1. 步驟一：把錯誤訊息映射到 redlib 的呼叫點
 
 ```bash
-# 上游 clone（淺即可，只要读得懂源碼）
+# 上游 clone（淺即可，只要讀得懂源碼）
 git clone --depth 1 https://github.com/redlib-org/redlib.git /tmp/redlib-triage
 # 錯誤訊息字串在源碼裡的產生點
 grep -rn "Failed to parse page JSON\|Reddit is having issues\|Reddit error" /tmp/redlib-triage/src
@@ -147,6 +147,25 @@ done
 `她的自宅公網IP`，AS4780 DUI，台北 ADSL）。**123 貼文頁 200 / 153 則留言、log 零錯誤；
 o3 貼文頁 404、頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`**。
 
+### 步驟 0：先證明「兩台真的在跑同一支映像」——否則 §4.2 的前提就不成立（2026-10-27 踩到）
+
+```sh
+# 兩台都跑：執行中容器的 image id + registry 標籤 + 誰在管更新
+docker inspect redlib --format 'image={{.Config.Image}} running_id={{.Image}} started={{.State.StartedAt}}'
+docker images --digests | grep -i redlib
+docker inspect <watchtower 容器名> --format '{{json .Config.Cmd}}'   # 清單裡有沒有 redlib？多久掃一次？
+```
+
+- **別假設版本一致，用命令證明。** 2026-10-27 兩台正式實例都還在跑 4 天前的舊 pin（`sha256:73900bee…`），
+  而新版本（`24f7dce` → index digest `03c5b28c…`）早已發佈：amd64 那台的 watchtower 容器清單**根本沒有 redlib**
+  （等於永不自動更新），另一台雖在清單內但每 6 小時才掃一次、掃到的時刻還沒等到鏡像推送。
+  → 若不是先查 `running_id`，很容易把「版本沒更新」誤讀成「同一支映像兩台行為不同」。
+- 拉新版本（這兩台的 stack 由 Komodo 管；**只拉 CI 已發佈的標籤**，不在本機發佈任何新鏡像）：
+  `cd /etc/komodo/stacks/<stack>/ && docker compose pull redlib && docker compose up -d redlib`
+  跑完立刻用上面的 `docker inspect` 確認 `running_id` 已換新，再做 §4.1/§4.2 的對照。
+  2026-10-27 更新後的實測：amd64 那台貼文頁 200 / 252,837 B / 232 則；被封的機房那台照舊 404 +
+  `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/…`（換 pin 不改變結局，正符合 §4.2 的預測）。
+
 ### 判別順序（比對「兩台」比對「兩支映像」更快）
 
 1. 先確認兩台是**同一個 manifest digest**（不是同一個 tag 字串而已）：
@@ -206,7 +225,7 @@ o3 貼文頁 404、頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comm
   保護對象是 origin（免 DDoS、隱藏源 IP）。
 - Reddit 看到的是**出向**那一段：`redlib → www.reddit.com`，**由那台機器自己的出口 IP 直接發起**，
   這段流量不會經過 Cloudflare（CF 不會出現在路徑上，也不會改寫我們這邊的 TLS/HTTP2 指紋）。
-  唯一例外：主機上另外跑 `cloudflare-warp` 之类的出口代理（見下）。
+  唯一例外：主機上另外跑 `cloudflare-warp` 之類的出口代理（見下）。
 - 所以**沒有任何東西「被 Reddit 指紋識別」到 o3 有 CDN 這件事**：Reddit 在自己的 edge 上看到的
   就是 `o3PublicIP`（AS31898 Oracle）發出的請求，而 redlib 用的 wreq 已是瀏覽器級
   TLS/JA4/HTTP2 模擬（`src/client.rs` 的 `build_emulated_client`）、列表也拿得到 200，

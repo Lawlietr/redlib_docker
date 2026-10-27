@@ -147,6 +147,14 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > workaround is now supplied by upstream — it remains a workaround, not a root fix, with the same
 > re-break risk and observable (block / parse error in `client.rs`).
 >
+> **2026-10-27: upstream formally closed #592 (unmerged) — nothing to do here.** The maintainer closed it on
+> 2026-10-21 (`mergeable=false`, 0 reviews) and its two commits are **still not** patch-equivalent in `main`
+> (`git cherry -v` shows both as `+`), so our 2026-10-22 decision to retire it in favour of upstream's own
+> equivalent commit remains correct. The same round also **confirmed upstream's `%2F` workaround is dead**:
+> an image built from the same list with the shreddit PR **removed** returns no comments at all on both boxes
+> and all four threads (404 + parse error) → **the shreddit PR is load-bearing** and must not be dropped just
+> because it is a workaround.
+>
 > **Added bake on 2026-10-23: #599 (⚠ it does not fully solve the problem)**
 >
 > The `%2F` encoding workaround above **has since been defeated by Reddit**: our production instance started
@@ -189,6 +197,15 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > `Reddit returned <status> | /svc/shreddit/...`, `Reddit is rate limiting comment requests...`,
 > `Refusing to fetch non-shreddit path`, or the old parse-error string (meaning `by_id` is blocked as well).
 > Tier and rationale: `design/upstream-pr-bake.md` §2, §8.12.
+>
+> **2026-10-27 evaluation: upstream #603 (comments via Reddit's Android persisted GraphQL) — decided NOT to bake.**
+> It **replaces** the #599 path instead of complementing it (both edit the same comment-fetch line, so baking both
+> always conflicts) — it is a binary choice, not an addition. Measured with three images from the same bake chain on
+> two boxes: on a host whose egress Reddit accepts, #603 **works and is 2.7-4x faster** (same thread: 1.02s vs 2.42s;
+> 1.13s vs 3.06s) and really breaks the 200-comment ceiling with a `cursor` link (next page 200 / 58,810 B / 0.36s);
+> but on the instance whose egress IP Reddit blocks it still renders **0 comments**, it swaps one undocumented Reddit
+> dependency (HTML fragments) for another (a GraphQL persisted-query hash), and comments per page drop 240 → 200.
+> Trigger conditions and the full data: `design/upstream-pr-bake.md` §8.14.
 
 > **Pin bump on 2026-10-27 (`0db637cd` → `26c02193`)**: #599 gained three commits after we first baked it —
 > the `rdt` bot-check `302` is now followed instead of erroring out, comment GIFs/videos stop being an empty
