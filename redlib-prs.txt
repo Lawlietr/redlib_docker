@@ -14,6 +14,12 @@
 # in src/client.rs for no gain. The other five remain unmerged upstream.
 #
 # Format: <PR number> <head SHA at review time — warns if the PR was force-pushed>
+# NOTE (2026-10-27): that SHA is a DRIFT WARNING ONLY. A normal build merges each
+# PR's CURRENT head (refs/pull/<n>/head can only be the head), so this file does
+# not freeze the code and two builds of "the same pin" are the same tree. To
+# really build at the listed SHA use:
+#   docker build --build-arg BAKE_ARGS=--at-listed-sha .
+# For a reproducible artifact, pin the <git-sha> image tag or the digest.
 # Rationale, review tiers, re-analysis procedure: design/upstream-pr-bake.md
 
 549 9703ca81e11cc5320107b13da4fa6c8abb717c63   # video: CMAF + rich:video (supersedes #506)
@@ -21,4 +27,4 @@
 521 93c03bb1c3ea7b7ff287227dc0726f5f325d1fb9   # default post sort applied without saving
 560 7a284d301c5fecb657a6330e18bf461d5f679aab   # /u/:name/s/:id share links
 539 514202ad1d1667cb066457bb637535de52eeb2e2   # lazy-load post images (drops svg wrapper)
-599 0db637cd80d40f16bd1eb024f40966ad71e96455   # EXPERIMENT (not pushed/published): load comments from shreddit HTML fragments
+599 26c021932091b125b4ec27333503f0e08fc103de   # EXPERIMENT (unstable, upstream 0 review): comments from shreddit HTML fragments; ⚠ only works where the egress IP is not blocked by Reddit (design/upstream-pr-bake.md §8.13)

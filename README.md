@@ -150,7 +150,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > 0 則留言不 panic、panic 0）。**但它只把「整頁壞掉」換成「能用但有損」，以下都是已知代價：**
 >
 > 1. **仍是 workaround，而且比 #592 更脆**：打的是 Reddit **未文件化的內部 fragment 端點**，Reddit 關掉就全壞；
->    該 PR 是 **AI 生成、0 review、上游 CI 從沒跑過**（head `0db637cd`，0 個 check runs）。
+>    該 PR 是 **AI 生成、0 review、上游 CI 從沒跑過**（head `26c02193`，0 個 check runs；2026-10-23 首次 bake 時是 `0db637cd`）。
 > 2. **反限流很脆**：captcha 偵測靠比對字面 `<title>Reddit - Prove your humanity</title>`，再加上 429 與
 >    `x-ratelimit-remaining < 20` 就輪替 cookie session。字串一改，challenge 頁會被當成正常留言內容解析。
 > 3. **請求放大**：每個未 cache 的貼文頁要 **1–31 個** Reddit 請求（本機實測**冷 3.07s / 熱 0.019s**，listing 對照 0.74s），
@@ -169,6 +169,25 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > `Reddit returned <status> | /svc/shreddit/...`、`Reddit is rate limiting comment requests...`、
 > `Refusing to fetch non-shreddit path`，或舊的那串 parse error（代表 `by_id` 也被封）。
 > 分級與判定依據：`design/upstream-pr-bake.md` §2、§8.12。
+
+> **2026-10-27 pin 更新（`0db637cd` → `26c02193`）**：#599 在我们首次 bake 之後又多三支 commit ——
+> `rdt` bot-check 的 302 不再報錯、留言裡的 GIF/影片從空的可點方塊變成原生 `<video>`、以及**最要緊的一支**：
+> Reddit edge 開始把**沒帶 `Origin`/`Referer` 的「more comments」POST 回 403**，而且 shreddit 對**行動端**模擬
+> 每個 fragment 只給 10 則留言（桌面 25 則）→ 新 pin 補上瀏覽器 headers 並讓 shreddit 用**自己的桌面 client**。
+> 也就是说：**現行已發佈的映像（pin `0db637cd`）正處於「留言展開被抑 / 每頁只有十則」的退化狀態**。
+> 新 head 只碰 `src/client.rs` 與 `src/shreddit.rs`，**`Cargo.toml`/`Cargo.lock` 零變化** → 相依與映像體積不變。
+> 仍**未修**：留言圖片 overflow 容器（上游 2026-10-27 回報，之後零 commit）、200 則上限、其余 §8.12 缺口。
+
+> ⚠ **`redlib-prs.txt` 裡那欄 SHA 只是「漂移警示」，不是版本鎖定**：建置一律拿 PR 的**當前** head
+> （`refs/pull/<n>/head` 永遠只有最新 head）。要重現過去某一組 bake 組合，用
+> `docker build --build-arg BAKE_ARGS=--at-listed-sha`；要拉可重現的產物，**pin `<git-sha>` tag 或 digest**。
+> 完整說明：`RELEASE_NOTES.md` 2026-10-27 條目、`design/upstream-pr-bake.md` §6。
+
+> ⚠ **換 pin 不會修好「出口是機房 IP」的實例**：同一個 digest 在 OCI（Oracle 出口）上贴文頁照样 404，
+> 頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`，而住宅出口的機器完全正常
+> → 那是**出口 IP 信譽**，不是 code。掛 Cloudflare CDN 也不會改变（CDN 代理的是**進向**；
+> redlib 打 Reddit 的請求由該機器自己直接發出，不经过 CF）。判別 SOP：`design/error-triage-playbook.md` §4.2、
+> `design/upstream-pr-bake.md` §8.13。
 
 ## 映像標籤（Tags）
 
@@ -308,11 +327,16 @@ docker logs redlib-local 2>&1 | grep -ci panic   # 要 0
 - **更新後還是舊版**：`latest` 是 rolling tag，已拉過的主機要重新 `docker pull` 並 recreate；
   用本 repo 的 compose 時記得 `--no-build`（見上方 A) 模式），否則 `up -d` 會用本地 build 的產物。
 - **build 時 merge 衝突 / `warning: PR #<n> head moved`**：上游或 PR 漂移，
-  照 `design/upstream-pr-bake.md` §5 重新評估 `redlib-prs.txt`。
+  照 `design/upstream-pr-bake.md` §5 重新評估 `redlib-prs.txt`。注意預設行為**只是警告**，建置照样用 PR 的
+  當前 head（那欄 SHA 不是版本鎖）；要真的重現歷史組合：`docker build --build-arg BAKE_ARGS=--at-listed-sha`。
 - **貼文頁又壞 / 留言變空 / 出現 rate-limit 訊息**：先分清楚是哪一層壞 ——
   `Reddit returned <status> | /svc/shreddit/...`（#599 的 fragment 端點被擋）、
   `Reddit is rate limiting comment requests. Try refreshing in a few seconds.`（cookie session 配額被吃光）、
   舊的 `Failed to parse page JSON data...`（連 `by_id` 也被封）。溯源 SOP：`design/error-triage-playbook.md`。
+- **同一支映像，A 機能用、B 機贴文頁全壞**：先比 `docker images --digests` 確認是**同一個 manifest digest**，
+  再從兩台 host 用**带瀏覽器 headers** 的 curl 打 `/svc/shreddit/comments/r/<sub>/t3_<id>`：
+  住宅 IP 200、機房 IP（Oracle/Hetzner/Vultr/AWS…）403 → **出口 IP 被 Reddit 封**，重產映像/换 env/重啟容器都無效。
+  挂 Cloudflare CDN 也不会救（CDN 只在進向）。做法：`design/error-triage-playbook.md` §4.2。
 
 ## 專案資訊
 

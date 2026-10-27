@@ -5,6 +5,44 @@ English only (this file is the image changelog consumers read; the design docs i
 
 ---
 
+## 2026-10-27 — #599 pin moved to `26c02193`; and an honest note about what the pin is worth
+
+**What changed.** Only the `599` line in `redlib-prs.txt`: the pinned upstream head moved from
+`0db637cd` to `26c02193`. #599 gained three commits since we first baked it, all of them about the
+comments crawler being punished by Reddit's edge:
+
+| Commit | What it fixes |
+|---|---|
+| `1d55e3e` | Reddit's `rdt` bot-check answers some clients with a `302` to the same shreddit path; that used to surface as `Reddit returned 302 Found`. Now followed up to 3 times, restricted to `/svc/shreddit/` on www.reddit.com. The expansion crawler also switched from a batch barrier to a `JoinSet`, so one slow "more comments" request no longer stalls its batch. |
+| `a12eaf6` | Comment media was wrapped in Reddit's `<shreddit-player>` element, which only renders through Reddit's JavaScript → an empty clickable box. It now becomes a native `<video>` of the same proxied MP4 (`/preview/external-pre/…?format=mp4`); GIFs autoplay, loop and stay muted. |
+| `26c0219` | **The one that matters for our published images.** Reddit's edge started answering "more comments" POSTs that carry no `Origin`/`Referer` with its *blocked by network security* 403, and shreddit serves mobile-emulated clients 10 comments per fragment instead of 25. Shreddit requests now send the browser headers and use their own desktop-platform client (the OAuth API client keeps its emulation). Upstream's own measurement: a 7.5k-comment post went from ~10 visible comments to ~285, and "More replies" started working. |
+
+Nothing else in the bake list moved. The new head touches only `src/client.rs` and `src/shreddit.rs`
+(**`Cargo.toml`/`Cargo.lock` unchanged** → same dependency set, same image size), and merging it under
+the other five PRs is still a clean six-way `--no-ff`. Four new unit tests ship with it.
+
+**Still broken after this bump (do not claim otherwise):** comment images overflowing their container
+(reported upstream 2026-10-27, no commit after `26c0219` addresses it), the 200-comment crawl cap,
+no author flair/awards on comments, 1–31 upstream requests per uncached thread page, and the
+instance-wide shared shreddit cookie session. Full list: the 2026-10-23 entry below.
+
+**A caveat about the pin column.** Building revealed that the SHA in `redlib-prs.txt` was only ever a
+*drift warning*: `apply_redlib_prs.sh` fetches `refs/pull/<n>/head`, which can only ever be the PR's
+current head, so an "A/B against the old pin" silently builds the new head — the only clue is the
+`warning: PR #599 head moved` line in the build log. Consequence for you: **`<git-sha>` tags are the
+reliable way to get an identical build; the pin column does not freeze the code.** `.build/apply_redlib_prs.sh`
+now has an explicit `--at-listed-sha` mode (exposed as `--build-arg BAKE_ARGS=--at-listed-sha`) that
+really builds at the listed SHA, for reproducing a past bake combination.
+
+**Not a fix for instances on datacenter IPs.** An instance whose egress IP is a hosting ASN (we hit this
+on an Oracle Cloud box, `o3PublicIP`, AS31898) gets `Reddit returned 403 Forbidden | /svc/shreddit/comments/...`
+on every thread page from the very first fragment, while the *same image digest* works from a residential
+line. That failure mode is egress IP reputation, not code, and a pin bump cannot repair it; a Cloudflare
+CDN in front of the instance does not help either, because the request to Reddit leaves the box itself.
+Symptom mapping and the two-box probe procedure: `design/error-triage-playbook.md` §4.2.
+
+---
+
 ## 2026-10-23 — thread pages work again via upstream PR #599 (**workaround, and not a complete one**)
 
 **Symptom.** Thread pages were broken again on every instance:

@@ -163,7 +163,7 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 >
 > 1. **Still a workaround, and more fragile than #592**: it relies on Reddit's **undocumented internal fragment
 >    endpoint**; if Reddit switches it off, everything breaks again. The PR is **AI-generated, has 0 reviews, and
->    upstream CI has never run it** (head `0db637cd`, 0 check runs).
+>    upstream CI has never run it** (head `26c02193`, 0 check runs; it was `0db637cd` when we first baked it on 2026-10-23).
 > 2. **Fragile anti-throttling**: captcha detection matches the literal `<title>Reddit - Prove your humanity</title>`,
 >    plus a 429 or `x-ratelimit-remaining < 20` rotates the cookie session. Change that string and the challenge page
 >    gets parsed as if it were comment content.
@@ -189,6 +189,30 @@ docker build --build-arg REDLIB_SRC=https://github.com/redlib-org/redlib.git -t 
 > `Reddit returned <status> | /svc/shreddit/...`, `Reddit is rate limiting comment requests...`,
 > `Refusing to fetch non-shreddit path`, or the old parse-error string (meaning `by_id` is blocked as well).
 > Tier and rationale: `design/upstream-pr-bake.md` §2, §8.12.
+
+> **Pin bump on 2026-10-27 (`0db637cd` → `26c02193`)**: #599 gained three commits after we first baked it —
+> the `rdt` bot-check `302` is now followed instead of erroring out, comment GIFs/videos stop being an empty
+> clickable box (they become a native `<video>`), and **the one that matters for our published images**:
+> Reddit's edge started answering "more comments" POSTs that carry no `Origin`/`Referer` with a *blocked by
+> network security* 403, and shreddit gives mobile-emulated clients 10 comments per fragment instead of 25.
+> The new head sends the browser headers and gives shreddit its own desktop client. In other words: **the
+> image we published with pin `0db637cd` is currently in the degraded state** (expansion blocked, ~10 comments
+> per fragment). The new head touches only `src/client.rs` and `src/shreddit.rs`; **`Cargo.toml`/`Cargo.lock`
+> are unchanged**, so the dependency set and the image size do not change. **Still unfixed:** comment images
+> overflowing their container (reported upstream 2026-10-27, no commit after `26c02193`), the 200-comment cap,
+> and the rest of §8.12.
+
+> ⚠ **The SHA column in `redlib-prs.txt` is only a drift warning, not a version pin**: a build always takes the
+> PR's **current** head (`refs/pull/<n>/head` can only ever be the head). To reproduce a past bake combination use
+> `docker build --build-arg BAKE_ARGS=--at-listed-sha`; to get a reproducible artifact **pin the `<git-sha>` tag or
+> the digest**. Details: the 2026-10-27 entry in `RELEASE_NOTES.md`, `design/upstream-pr-bake.md` §6.
+
+> ⚠ **A pin bump will not fix an instance whose egress is a datacenter IP.** The very same image digest still
+> returns 404 on thread pages on our Oracle Cloud box, with `Reddit returned 403 Forbidden |
+> /svc/shreddit/comments/r/<sub>/t3_<id>` in the page, while a residential-line box serving the same digest works
+> fine. That is **egress IP reputation, not code**. A Cloudflare CDN in front of the instance does not help either:
+> the CDN only fronts the **inbound** direction, while redlib's request to Reddit leaves the box itself.
+> Triage procedure: `design/error-triage-playbook.md` §4.2 and `design/upstream-pr-bake.md` §8.13.
 
 ## Environment Variables
 
@@ -254,7 +278,13 @@ its own images without editing a single file.
 
 ## Release notes → `RELEASE_NOTES.md`
 
-The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the last two rounds:
+The full changelog lives in **`RELEASE_NOTES.md`**. Highlights of the last rounds:
+
+- **2026-10-27 — #599 pin moved to `26c02193`**: comment expansion stops being blocked ("more comments" POSTs now
+  carry `Origin`/`Referer`/`Sec-Fetch-*`) and shreddit now uses a desktop client (10 → 25 comments per fragment);
+  the `rdt` bot-check redirect is followed and comment media becomes a native `<video>`. Also documented: **the pin
+  column never froze the code** (it is a drift warning; `--at-listed-sha` was added for real reproduction), and
+  the **egress-IP failure mode** that no code change can fix.
 
 - **2026-10-23 — #599 baked, comments are back on thread pages**: comments no longer come from the comments API but
   from Reddit's frontend `/svc/shreddit/comments/...` HTML fragments. ⚠ **Incomplete and not a root fix**: comments are
@@ -350,6 +380,16 @@ Worth knowing:
   `Reddit is rate limiting comment requests. Try refreshing in a few seconds.` (the shared cookie session's quota is
   used up), or the old `Failed to parse page JSON data...` (even `by_id` is blocked now).
   Root-cause SOP: `design/error-triage-playbook.md`.
+- **Same image, works on box A but every thread page fails on box B**: first compare `docker images --digests` to
+  confirm both run the **same manifest digest**; then probe `/svc/shreddit/comments/r/<sub>/t3_<id>` from both hosts
+  with **browser-grade headers**: residential IP → 200, hosting ASN (Oracle/Hetzner/Vultr/AWS…) → 403 means the
+  **egress IP is blocked by Reddit**. Rebuilding, changing env vars or restarting the container changes nothing, and
+  a Cloudflare CDN does not rescue it either (it only fronts inbound traffic).
+  Procedure: `design/error-triage-playbook.md` §4.2.
+- **Build merge conflict / `warning: PR #<n> head moved`**: upstream or the PR drifted — re-review `redlib-prs.txt`
+  per `design/upstream-pr-bake.md` §5. Note the default behaviour is **only a warning**: the build still merges the
+  PR's current head (the SHA column is not a version lock). To really reproduce a historical combination:
+  `docker build --build-arg BAKE_ARGS=--at-listed-sha`.
 
 ## Project Information
 

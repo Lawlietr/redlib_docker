@@ -112,6 +112,7 @@ Multi-stage build:
 |-----|---------|-------------|
 | `REDLIB_SRC` | `https://github.com/redlib-org/redlib.git` | Redlib git source |
 | `REDLIB_BRANCH` | `main` | Branch to clone |
+| `BAKE_ARGS` | (empty) | Extra flags for `.build/apply_redlib_prs.sh`. Pass `--at-listed-sha` to build exactly at the SHAs listed in `redlib-prs.txt` (reproducing a past bake combination); default builds each PR's current head. |
 
 ### Conventions
 
@@ -142,6 +143,10 @@ When a user reports a broken page or a runtime error message, follow `design/err
 - "restart the container / rotate the token" is not a diagnosis: Reddit's block can be a **path rule** (same token, same IP: listings 200, thread route 403).
 - An upstream PR's claimed mechanism must be reproduced in **our** environment. The accepted proof is two images (with / without the candidate PR) built from the same list, run side by side, with the control image reproducing the exact reported message. Bare `curl` probing is unreliable because without a correctly-minted token both the plain and the encoded URL return the same block page (false negative).
 - Classify every accepted fix as **root fix** or **workaround** and record its re-break trigger plus the observable message to grep next time.
+- If two instances run the **same image digest** and behave differently, suspect **egress IP reputation**, not code:
+  playbook §4.2 has the two-box probe (browser-grade headers against `/svc/shreddit/...`; residential 200 vs hosting-ASN
+  403). No pin bump, env change or container restart fixes it, and a Cloudflare CDN does not help (it only fronts inbound
+  traffic) — see `design/upstream-pr-bake.md` §8.13.
 
 ### Environment Variables (Runtime)
 
@@ -171,6 +176,9 @@ When a user reports a broken page or a runtime error message, follow `design/err
 - **Commit messages: English** (conventional-commit-style subject, e.g. `fix(build): …`; body in English).
   Repo docs stay bilingual: `README.md` zh-TW, `README_EN.md` English, `RELEASE_NOTES.md` English, `design/*.md` zh-TW.
 - Shell: `set -euo pipefail`, quote variables, `&&` chaining, `printf` over `echo`
+- The SHA column in `redlib-prs.txt` is a **drift warning, not a version lock**: a normal build merges each open PR's
+  **current** head. Reproducibility comes from the `<git-sha>` image tag (or the digest), never from that column;
+  use `--build-arg BAKE_ARGS=--at-listed-sha` when you must rebuild a historical bake set.
 - Git: `--depth 1`, verify upstream compiles on branch bump
 - CI scripts: `trap 'docker image prune -a -f' EXIT` for cleanup
 

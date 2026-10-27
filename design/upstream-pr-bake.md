@@ -47,11 +47,12 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | [#521](https://github.com/redlib-org/redlib/pull/521) | `93c03bb1` | `src/subreddit.rs`：`post_sort` 由 `req.cookie("post_sort")` 改 `setting(&req, "post_sort")` | **`REDLIB_DEFAULT_POST_SORT` 不必先存設定才生效**（直接關係本 repo 的 env） |
 | [#560](https://github.com/redlib-org/redlib/pull/560) | `7a284d30` | 新增 `/u/:name/s/:id` 分享連結處理（id 長度 guard `(8..12)`） | ⚠ **實際上用不了**：現行 post id 是 7 字元 → 一律 `Nothing here` 404；既有的 `/r/:sub/s/:id` 同病。見 §8.9 |
 | [#539](https://github.com/redlib-org/redlib/pull/539) | `514202ad` | `templates/utils.html` 移除 `<svg><image>` 包裝，改直出 `<img loading="lazy">` | 圖片 lazy-load；同時覆蓋原 fork patch D3 的 SVG 部分 |
-| [#599](https://github.com/redlib-org/redlib/pull/599) | `0db637cd` | 新增 `src/shreddit.rs`（719 行）+ `src/client.rs` 的 `shreddit_fragment()`：貼文改 `/by_id/t3_<id>.json`、**留言改抓 Reddit 前端自己的 `/svc/shreddit/comments/...` HTML fragment** 用 `scraper` 重建原 JSON 形狀；cookie session 輪替 + captcha 偵測；`Cargo.toml` 加 `scraper 0.29` 與 wreq `cookies` feature | 貼文頁留言恢復（`%2F` 繞行已被 Reddit 識破後唯一可行的上游方案）。⚠ **繞行、且不完整**：200 則上限、無 flair/awards、每頁 1–31 請求、subreddit 不驗證。詳 §8.12 |
+| [#599](https://github.com/redlib-org/redlib/pull/599) | `26c02193`（pin 移到了 2026-10-27；原先分析時是 `0db637cd`） | 新增 `src/shreddit.rs`（791 行）+ `src/client.rs` 的 `shreddit_fragment()`：貼文改 `/by_id/t3_<id>.json`、**留言改抓 Reddit 前端自己的 `/svc/shreddit/comments/...` HTML fragment** 用 `scraper` 重建原 JSON 形狀；cookie session 輪替 + captcha 偵測；`Cargo.toml` 加 `scraper 0.29` 與 wreq `cookies` feature。**2026-10-27 改 pin 後多出的三支 commit**（`1d55e3e`/`a12eaf6`/`26c0219`）：`rdt` bot-check 的 302 追隨（最多 3 次，只准落在 `/svc/shreddit/`）+ 展開改用 `JoinSet`（不再批次柵欄）、留言裡的 `<shreddit-player>` 改原生 `<video>`（GIF autoplay/loop/muted）、**more-comments POST 補 `Origin`/`Referer`/`Sec-Fetch-*`**（Reddit edge 開始 403 缺這些的 POST）+ **shreddit 專用 client 改用桌面平台**（行動端每 fragment 只給 10 則，桌面 25 則） | 貼文頁留言恢復（`%2F` 繞行已被 Reddit 識破後唯一可行的上游方案）。⚠ **繞行、且不完整**：200 則上限、無 flair/awards、每頁 1–31 請求、subreddit 不驗證。⚠ **只吃 IP：出口是機房 ASN（Oracle/Hetzner/Vultr…）的實例，`/svc/shreddit/` 從第一個 fragment 就 403，换 pin 也不會修好** —— 詳 §8.13（2026-10-27 o3/123 定因）。詳 §8.12 |
 | [#592](https://github.com/redlib-org/redlib/pull/592) | `1e9515eab8d0` | `src/client.rs`：`encode_thread_route()` 把 `/r/<sub>` 與 `comments` 之間那**一個** slash 編碼成 `%2f`（放進 `json()` 入口，涵蓋所有呼叫者）；另加 `non_json_response_error()` 把 403 區塊頁報成「Reddit blocked this request (403 Forbidden)…」而非 parse error。附 5 個純函式測試 | **貼文頁恢復可用**（此前所有實例的 `/r/x/comments/<id>/…` 全數 403 → 前端 `Failed to parse page JSON data: expected value at line 1 column 1`）。⚠ **這是繞行，不是根治**，見 §8.8。
 > **2026-10-22 退役**：上游 v0.40.0 以直接 commit `0a3e9cd fix: encode anonymous comments request paths` 實作等效 `%2f` 繞行（同碰 `src/client.rs`）。#592 作為 **PR 從未合併**，保留只會與 `0a3e9cd` 在 `src/client.rs` 衝突，故已從 `redlib-prs.txt` 移除；thread-403 現由上游 `0a3e9cd` 供應。見 §8.8。 |
 
-**merge 順序 = `redlib-prs.txt` 檔內順序**（549 → 542 → 521 → 560 → 539 → 599）。六支檔案重疊極少（549 與 560 同碰 `src/main.rs` 但不同區塊），實測 `--no-ff` 全 clean；2026-10-23 以 `git merge --no-ff` 驗證过 **#599 放最後與放第一個都是 six-way clean**（#599 只碰 `client.rs`/`post.rs`/`lib.rs`/`shreddit.rs`/`Cargo.*`，與其餘五支零重疊），本地 `docker build` 亦 exit 0（`--locked` 未報 lock 不一致）。
+**merge 順序 = `redlib-prs.txt` 檔內順序**（549 → 542 → 521 → 560 → 539 → 599）。六支檔案重疊極少（549 與 560 同碰 `src/main.rs` 但不同區塊），實測 `--no-ff` 全 clean；2026-10-23 以 `git merge --no-ff` 驗證過 **#599 放最後與放第一個都是 six-way clean**（#599 只碰 `client.rs`/`post.rs`/`lib.rs`/`shreddit.rs`/`Cargo.*`，與其餘五支零重疊），本地 `docker build` 亦 exit 0（`--locked` 未報 lock 不一致）。
+> 2026-10-27 重新驗證：#599 head 從 `0db637cd` 推到 `26c02193`（+3 commits，只碰 `src/client.rs` 與 `src/shreddit.rs`，**`Cargo.toml`/`Cargo.lock` 零變化** → 相依數與映像體積不變），以 `26c02193` 為底依序 `--no-ff` 併入其餘五支 **全 clean**。
 > 注：#592 原先與 549 同碰 `src/client.rs` 但不同區塊；2026-10-22 退役後 bake 鏈一度不碰 `src/client.rs`，thread-403 繞行改由上游 `0a3e9cd`（v0.40.0）供應。**2026-10-23：`0a3e9cd` 那招已被 Reddit 識破**（正式實例的貼文頁又回到 `Failed to parse page JSON data: expected value at line 1 column 1 | /r/<sub>/comments/<id>/<slug>/.json?&raw_json=1`），而上游 main 自 v0.40.0（HEAD `ba116c1`）後零 commit → 只能 bake #599。
 > 註：#592 原本與 549 同碰 `src/client.rs` 但不同區塊；2026-10-22 退役後 bake 鏈不再碰 `src/client.rs`，該檔的 thread-403 繞行由上游 `0a3e9cd`（v0.40.0）供應。
 
@@ -92,7 +93,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 | 檔 | 角色 |
 |----|------|
 | `redlib-prs.txt` | **唯一 PR 清單**（PR 編號 + 分析時 head SHA + 一行說明） |
-| `.build/apply_redlib_prs.sh` | 在 clone 好的 redlib 樹上依清單 `git fetch pull/<n>/head` + `git merge --no-ff`；head 漂移會 warn，衝突直接失敗 |
+| `.build/apply_redlib_prs.sh` | 在 clone 好的 redlib 樹上依清單 `git fetch pull/<n>/head` + `git merge --no-ff`；head 漂移會 warn，衝突直接失敗。⚠ **列在 `redlib-prs.txt` 的 SHA 預設只是「漂移警示」，不是版本鎖定**：建置永遠拿 PR 的當前 head（2026-10-27 親身踩到：用旧 pin 做 A/B，結果兩邊都 build 到新 head，只差一行 `warning:`）。要真的重現過去某一組 bake 組合，用 `--at-listed-sha`（它會 `fetch pull/<n>/merge` 再取 PR 側 parent，因為 `refs/pull/<n>/head` 永遠只有最新 head）；實測能解析 `0db637cd` 並重建出 719 行的 `src/shreddit.rs` |
 | `Dockerfile` | `COPY redlib-prs.txt .build/apply_redlib_prs.sh` → clone（`--depth 300`）→ 呼叫腳本。**本地 build 與 GitHub Actions amd64 build 都走這條** |
 | `.forgejo/scripts/build_and_push.sh` | 多架構路徑不用 Dockerfile，故 clone 後**另外**呼叫同一支腳本（兩條路徑內容必須一致） |
 | `.forgejo/workflows/build.yml`、`.github/workflows/build.yml` | 觸發路徑含 `redlib-prs.txt`、`.build/**` |
@@ -122,7 +123,35 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
   - [ ] 200 則上限：大討論串會剩「More replies」殘根（本地 93–106 個）→ 上線後確認可接受
   - [ ] subreddit 名稱不再被驗證：`/r/__totally_wrong_sub__/comments/1xbt0if/x/` 本地回 **200 並顯示 r/masseffect 那篇**（上游 `main` 是 404）→ 上線後確認不會造成誤導性連結
   - [ ] 請求放大成本：本地**冷 3.07s / 熱 0.019s**（listing 0.74s）→ 上線後看真实流量下的延遲與 rate-limit 訊息頻率
-  - [ ] 留言缺 author flair / awards（外观退步，非功能錯誤）
+  - [ ] 留言缺 author flair / awards（外观退步，非功能错误）
+- [x] **#599 pin bump 2026-10-27（`0db637cd` → `26c02193`）**（本地 build + 出口可用機器上的容器 A/B，全部跑完）：
+  - [x] 本地 `docker build` exit 0，log 出現 6 行 `Merging PR #<n>` 且**無 `warning:`**（pin 已對齊 head，不再報 `head moved`）
+  - [x] **真正的對照組要用 `--at-listed-sha` 才建得出來**：直接拿旧 pin 跑 `docker build` 會**靜默 build 到新 head**
+        （兩邊 image ID 完全相同 = `1f386abe78a8`，只有 `warning:` 一行線索）。用
+        `docker build --build-arg BAKE_ARGS=--at-listed-sha` 才產出 pin 在 `0db637cd` 的映像（ID `9f8a10cb6e87`）。
+  - [x] **A/B（出口可用機器，同一 sub、同一刻、同一個 3.8k 留言的討論串）**：
+        舊 head → 200 / 237,891 B / 3.10s / 229 個留言塊 / 73 個 `More replies`；
+        新 head → 200 / 218,557 B / 2.93s / 211 個留言塊 / 70 個 `More replies`；兩邊 log 皆 0 WARN、0 panic。
+        → **在我們的環境重現不出「展開全滅」**（上游作者是在他的 client 被隨機指派到 Chrome 模擬時看到的；
+        我們的 client profile 也是隨機 `[Chrome145, Firefox147]`，這次兩邊都落到能用的那一側）。
+        所以 `26c02193` 那三支 commit 對我們是**低風險、但未能本地證明療效**的更新（照 §0 的規矩如實記）。
+  - [x] **行動端/桌面差異是真實存在的**（從出口可用機器直打 Reddit）：同一個 fragment，
+        桌面 UA → 200 / 614,871 B / 132 個 `<shreddit-comment>`；Android UA → 200 / 266,498 B / 43 個。
+        舊 head 的 shreddit 請求**共用主 client**，而主 client 的平台是啟動時隨機 `[Android, Windows]`
+        （≈50% 機率落到行動端 → 每頁少一半素材，且**每次重啟重新抽一次**，watchtower 每 30 秒掃一次、每天重啟都會 reshuffle）；
+        新 head 有**專用的 `SHREDDIT_CLIENT`，平台固定 Windows** → 不再靠擲硬幣。這是這次 pin bump 最硬的實測理由。
+  - [x] `more comments` POST 的 `Origin`/`Referer` 規則**本地無法驗證**：不帶 cursor 的 POST 一律 405
+        （18 B），而 cursor 只能從已渲染的頁面裡取得 → 又一個 §3 那類「裸 curl 無辨識力」的假陰性陷阱。
+        上游作者的觀察是 Chrome 模擬被擋、Firefox 透過（機率性）。
+  - [x] 新 head 其他 §7 項目：留言 permalink `…/<cid>/?context=3` → 200 / 57.5 KB / 49 則留言、目標留言在頁上；
+        三種留言排序塊數各不同（confidence 216 / new 220 / top 280）；不存在的 post → 404 +
+        `Reddit error 404 "null": "Not Found"`（不是 parse error）；錯的 sub + 對的 post id → **仍然 200 並渲染別篇文章**
+        （§8.12 的缺陷在新 pin 依旧存在）；冷 2.91s / 熱 0.013s；panic 0。
+  - [ ] 本轮**未補到**的項目：0 則留言的 post（在用的 subreddit 列表裡找不到素材）、quarantined sub、
+        留言媒體的 `<video>` 改造（抓到的那个討論串沒有留言媒體）。
+  - [ ] 已知**仍未修**（不在這次 pin bump 範圍）：留言圖片 overflow 容器（Sparronator9999 2026-10-27T07:42Z 回報，
+        `26c02193` 之後零 commit）、200 則上限（大討論串照舊留 70–80 個 `More replies` 殘根）、§8.12 其他缺口。
+        ⚠ 機房出口的 o3 這次**沒有用新 pin 重測**：它壞在出口 IP（§8.13），換 pin 預期不會改變結局。
 - [x] 不存在的 **post** → 正確的 Reddit 404 錯誤頁（不是 parse error；原 #592 第二個 commit 的錯誤分級，現由上游 `client.rs` 供應）。
   不存在的 **sub** 則回 **200 空頁**——上游/Reddit 側行為，線上跟我們自己的容器 **byte 數完全一致**（6958），
   跟已退役的 #592 無關（原 `encode_thread_route()` 只改寫含 `/comments` 的路徑）
@@ -187,6 +216,32 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
     - **退出策略**：若 Reddit 封掉 shreddit 或 #599 被 force-push 成不能用，從 `redlib-prs.txt` 移除该行即可（`client.rs`/`post.rs` 回到上游 v0.40.0 形態）；
       届时贴文頁會回到 parse error，**不要重啟容器當解法**。
 
+13. **出口 IP 信譽是獨立於 code 的失敗層：同一個 digest，兩台實例結果相反**（2026-10-27 o3 vs 123 定因）：
+    - 兩台都是**同一個 manifest digest** `sha256:73900bee…8932e`（= `ac3f175` 那次 CI，含 bake #599）：
+      o3（OCI VPS，出口 `o3PublicIP`，**AS31898 Oracle**，東京；跑 `codeberg.org/lawlietr/redlib:latest`，arm64）
+      與 123（內網，出口 `她的自宅公網IP`，**AS4780 DUI**，台北 ADSL；跑 `ghcr.io/lawlietr/redlib:latest`，amd64）。
+      兩台的 `RepoDigests` 相同 → **變數不是 code**。
+    - 結果：**123** 貼文頁 200 / 162 KB / 153 則留言、log 零錯誤；**o3** 貼文頁 404 / 6.5 KB，頁面寫
+      `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/interesting/t3_1xgj…`（列表 `/r/popular` 仍是 200）。
+    - 判讀鏈：貼文本體那步（`/by_id/t3_<id>.json`，走 OAuth token）在 o3 **成功** → post 有渲染；死在留言那步
+      （`/svc/shreddit/`，**無 token 可用**，只能吃 IP 信譽）。而那個 `| /svc/shreddit/…` 路徑字尾**只有 bake #599
+      的 code 會產生** → 看到它就等於證明該實例已在跑 #599，換 pin（含 #599 的新 head）**不會修好它**。
+    - 判別指令與完整表格在 `design/error-triage-playbook.md` §4.2（裸 curl 對兩個 IP 都 403，無辨識力；
+      只有「瀏覽器級 headers + HTTP/2」能把差異暴露出來：住宅 200 / 915 KB，機房 403 / 同一份 190240 B block page）。
+    - **掛 Cloudflare CDN（橘雲）不會改變這件事**：橘雲代理的是**進向**（訪客 → CF edge → origin），遮的是訪客的
+      IP 與瀏覽器指紋，保護對象是 origin（DDoS、隱源 IP）。Reddit 看到的只有**出向**那段：由該機器自己的公網 IP
+      直接發起的 `redlib → www.reddit.com`，這段不經過 CF，CF 不會出現在路徑上，也不會改寫我們這端的 TLS/HTTP2 指紋。
+      所以「我們的 web 有掛 CF → Reddit 會指紋識別到 o3 有 CDN」這個擔心不存在：Reddit 只看到 `o3PublicIP`；
+      而 redlib 的 wreq 指紋已是瀏覽器級、列表也拿到 200，卻照樣在 `/svc/shreddit/` 吃 403 → **IP 信譽問題，不是指紋問題**。
+      （CF Tunnel 同樣只處理進向；要把出口變成 CF 的 ASN 得在主機跑 WARP 之類出口代理，但 Reddit 對 Cloudflare ASN
+      照樣擋——不是可用解方。）
+    - **redlib 沒有出口代理設定**：上游只有**進向**的媒體 proxy route（`main.rs` 的 `/img`、`/thumb`、`/hls`、`/vid`…），
+      `src/` 內沒有任何 egress proxy 的 env 或代碼（2026-10-27 以 `git grep -i proxy` 在含 #599 的樹上確認）。
+      → 「讓壞 IP 的實例走好的出口」只能做在**容器/主機層的 L3–L4 tunnel**（o3 與 123 兩台都看到 ZeroTier 的痕跡：
+      o3 有 `zerotier` 容器目錄與 `o3ZT` 介面、123 裝了 `zerotier-one`），不能指望 redlib 的 env 或 patch。
+      Tor 出口不是選項（123 上的 `tor-9050`/`tor_s` 不要拿來當地點：Reddit 封 Tor exit 比封機房更兇）。
+    - **退出策略**：把該實例的 redlib 搬到有住宅出口的機器（123 已驗證可用），或接受該實例只有列表可用
+      （貼文連結導到可用實例）。**不要**用重新編譯／換 env／重啟容器當解法——那是浪費時間。
 ## 9. 與 fork patch 計畫（P1）的關係
 
 | 原 fork 子集 | 現在 |

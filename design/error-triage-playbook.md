@@ -140,6 +140,83 @@ done
    回傳 **byte 數完全一致**（不存在的 sub：6958=6958；stub 列表：9098≊9100），
    就不是部署/架構/設定問題，而是上游對 degenerate Reddit 資料的渲染方式。別在 bake 裡找原因。
 
+## 4.2 兩台實例同一支 digest、結果不同 → 是「出口 IP」，不是 bake（2026-10-27 定因）
+
+事件：同一個 manifest digest（`sha256:73900bee…8932e` = 我們的 commit `ac3f175`，含 bake #599）
+部署在 **o3**（OCI VPS，出口 `o3PublicIP`，AS31898 Oracle，東京）與 **123**（內網，出口
+`她的自宅公網IP`，AS4780 DUI，台北 ADSL）。**123 貼文頁 200 / 153 則留言、log 零錯誤；
+o3 貼文頁 404、頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`**。
+
+### 判別順序（比對「兩台」比對「兩支映像」更快）
+
+1. 先確認兩台是**同一個 manifest digest**（不是同一個 tag 字串而已）：
+   ```bash
+   docker inspect redlib --format '{{.Image}}'
+   docker image inspect <image> --format '{{.Architecture}} {{.Created}} {{.RepoDigests}}'
+   docker images --digests | grep redlib
+   ```
+   兩台的 `RepoDigests` 相同（`latest` 是 rolling tag，同名不等於同內容）→ **code 變因已被排除**，
+   不要再在 bake／PR 清單／env 找原因。
+2. 打同一個貼文 URL 做「跨機 A/B」（兩台都用 localhost，不經過任何 CDN）：
+   ```bash
+   # 貼文 URL 要從站內自己渲染的列表 HTML 裡挖（§4.1 要領 1）
+   curl -s -o /tmp/t.html -w '%{http_code} %{size_download} %{time_total}s\n' \
+     "http://127.0.0.1:<port>/r/<sub>/comments/<id>/<slug>/"
+   grep -o 'Reddit returned [^<]\{0,80\}\|Reddit error [^<]\{0,60\}' /tmp/t.html | sort -u
+   docker logs --since 10m redlib 2>&1 | tail
+   ```
+3. **看錯誤訊息有沒有 `| <path>` 字尾來分层**（bake #599 之後必學，兩種死法不同層）：
+
+   | 頁面/log 上的訊息 | 失敗的是哪一步 | 來源 | 結論 |
+   |---|---|---|---|
+   | `Failed to parse page JSON data: expected value at line 1 column 1 \| /by_id/t3_<id>.json…`（或旧版的 `…/comments/…json`） | 貼文本體（OAuth JSON） | `client.rs` 的 `json()` | 上游那段被封／bake 未生效 |
+   | `Reddit returned <status> \| /svc/shreddit/comments/r/<sub>/t3_<id>` | **留言 fragment**（貼文本體已成功，所以 post 有渲染、只有留言區空） | #599 的 `shreddit_body()`（`src/client.rs:341`） | **#599 有在跑**，是 fragment 端點吃 403 |
+   | `Reddit is rate limiting comment requests. Try refreshing in a few seconds.` | 配額耗盡（同一 process-global session） | 同上 | 不是封鎖，是限流 |
+
+   關鍵：**帶 `| /svc/shreddit/…` 字尾的訊息只有 bake #599 之後的 code 才會產生**，所以看到它就等於
+   證明該實例已經在跑 #599 —— 這時「要不要跟進 #599」已經不是答案。
+4. 從**兩台 host**（不是容器內）用帶瀏覽器 headers 的 curl 打 shreddit 端點，分辨 IP 封鎖 vs 路徑規則：
+   ```bash
+   SUB=<sub>; ID=<post_id>
+   curl -s --http2 -o /tmp/s.html -w 'code=%{http_code} bytes=%{size_download} ver=%{http_version}\n' \
+     -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' \
+     -H 'Accept: text/html, application/xhtml+xml, application/x-shreddit-partial+xml' \
+     -H 'Accept-Language: en-US,en;q=0.9' -H 'Sec-Fetch-Site: same-origin' -H 'Sec-Fetch-Mode: no-cors' \
+     -H "Referer: https://www.reddit.com/r/${SUB}/comments/${ID}/" \
+     "https://www.reddit.com/svc/shreddit/comments/r/${SUB}/t3_${ID}"
+   curl -s -o /tmp/p.html -w 'code=%{http_code} bytes=%{size_download}\n' 'https://www.reddit.com/r/popular.json?raw_json=1'
+   curl -s https://ipinfo.io/json | head -c 300    # 看 org=（ASN）
+   ```
+   實測（2026-10-27）：
+   | 探測 | o3（Oracle JP） | 123（住宅 TW） |
+   |---|---|---|
+   | 裸 curl `/svc/shreddit/comments/r/<sub>/t3_<id>` | 403（190240B block page） | 403（189908B） |
+   | 瀏覽器 headers + Referer，HTTP/2 | **403**（同一 190240B） | **200 / 915 KB 真 fragment** |
+   | 同上 HTTP/1.1 打 `/r/popular.json` | 403 | 403 |
+
+   → 判讀：**兩個 IP 對裸 curl 都 403（無辨識力，見 §3 的假陰性陷阱），只有「瀏覽器級 headers」能把差異暴露出來**。
+   住宅 IP 200 / 機房 IP 403，且换 HTTP 版本、换 headers 都不變 → **出口 IP／ASN 信譽等級的封鎖**，
+   不是指紋、不是 code、不是 token。此时**换 pin（#599 更新）不會修好壞的那台**。
+5. 順手把兩台的出口 ASN 記進回報（Oracle / Hetzner / Vultr / DigitalOcean / AWS 這一類機房 ASN
+   對 `/svc/shreddit/` 基本全滅；Hinet／固網寬頻這一類住宅線目前可用）。這比任何源碼分析都快。
+
+### 為什麼掛了 Cloudflare CDN 也不會改變這件事
+
+- Cloudflare 橘雲代理的是**進向**（訪客 → CF edge → 我們的 origin）。它遮的是**訪客的 IP 與瀏覽器指紋**，
+  保護對象是 origin（免 DDoS、隱藏源 IP）。
+- Reddit 看到的是**出向**那一段：`redlib → www.reddit.com`，**由那台機器自己的出口 IP 直接發起**，
+  這段流量不會經過 Cloudflare（CF 不會出現在路徑上，也不會改寫我們這邊的 TLS/HTTP2 指紋）。
+  唯一例外：主機上另外跑 `cloudflare-warp` 之类的出口代理（見下）。
+- 所以**沒有任何東西「被 Reddit 指紋識別」到 o3 有 CDN 這件事**：Reddit 在自己的 edge 上看到的
+  就是 `o3PublicIP`（AS31898 Oracle）發出的請求，而 redlib 用的 wreq 已是瀏覽器級
+  TLS/JA4/HTTP2 模擬（`src/client.rs` 的 `build_emulated_client`）、列表也拿得到 200，
+  卻照样在 `/svc/shreddit/` 吃 403 → 證據指向 IP 信譽而不是指紋。
+- **redlib 本身沒有 proxy 設定**：上游 `src/` 只有**進向**的媒體 proxy route（`main.rs` 的
+  `/img`、`/thumb`、`/hls`、`/vid` 等），沒有任何出向 proxy 的 env 或代碼（2026-10-27 以
+  `git grep -i proxy` 在含 #599 的樹上確認）。因此「叫 redlib 走住宅出口」必須靠**主機層 L3/L4**
+  手段（wireguard/zerotier/tailscale 之類 tunnel + 路由或 nftables 把容器的 443 出向導過去），
+  而不是改 redlib 設定或打 patch。不要試圖用 123 上的 tor 容器當地點——Reddit 對 Tor exit 的封鎖比機房更兇。
+
 ## 5. 步驟五：tier 判定與落地
 
 1. 依 `design/upstream-pr-bake.md` §2/§3/§4 決定 Tier（已 bake／可選待決策／不採用＋理由）。

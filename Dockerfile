@@ -32,6 +32,12 @@ FROM rust:1.98-slim-bookworm AS builder
 
 ARG REDLIB_SRC=https://github.com/redlib-org/redlib.git
 ARG REDLIB_BRANCH=main
+# Extra flags for the PR bake chain. Empty by default (normal build). Pass
+# --build-arg BAKE_ARGS=--at-listed-sha to build exactly at the SHAs listed in
+# redlib-prs.txt instead of the PRs' current heads — that is how you reproduce a
+# past bake combination or build a real without/with A/B pair
+# (see .build/apply_redlib_prs.sh header and design/upstream-pr-bake.md §6).
+ARG BAKE_ARGS=
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -52,7 +58,7 @@ WORKDIR /redlib
 # build fails loudly instead of silently dropping upstream changes.
 COPY redlib-prs.txt .build/apply_redlib_prs.sh /tmp/redlib-build/
 RUN git clone --depth 300 --branch "${REDLIB_BRANCH}" "${REDLIB_SRC}" . \
-    && bash /tmp/redlib-build/apply_redlib_prs.sh . /tmp/redlib-build/redlib-prs.txt
+    && bash /tmp/redlib-build/apply_redlib_prs.sh ${BAKE_ARGS} . /tmp/redlib-build/redlib-prs.txt
 
 # BuildKit cache mounts persist cargo state on the host between builds
 # (incremental rebuilds). Cache content is NOT part of the stage image,

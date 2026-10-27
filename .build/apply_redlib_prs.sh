@@ -17,9 +17,24 @@ set -euo pipefail
 #
 # Used by: Dockerfile (local + GitHub Actions amd64 build) and
 # .forgejo/scripts/build_and_push.sh (multi-arch build).
+#
+# IMPORTANT (learned 2026-10-27): by default the listed SHA is only a DRIFT
+# WARNING - the build always merges the PR's CURRENT head. A published image is
+# therefore not reproducible from the pin alone, and an A/B built from an "old
+# pin" silently builds the new head (the warning line is the only clue). Pass
+# --at-listed-sha to really build at the listed SHA: it fetches pull/<n>/merge
+# and resolves the PR-side parent of that merge commit, because refs/pull/<n>/head
+# alone can only ever give the current head. Use that mode to reproduce a past
+# bake combination or to build a real without/with A/B pair.
 
-repo_dir="${1:?usage: apply_redlib_prs.sh <repo-dir> <prs-file>}"
-prs_file="${2:?usage: apply_redlib_prs.sh <repo-dir> <prs-file>}"
+strict_sha=false
+if [ "${1:-}" = "--at-listed-sha" ]; then
+  strict_sha=true
+  shift
+fi
+
+repo_dir="${1:?usage: apply_redlib_prs.sh [--at-listed-sha] <repo-dir> <prs-file>}"
+prs_file="${2:?usage: apply_redlib_prs.sh [--at-listed-sha] <repo-dir> <prs-file>}"
 
 # Resolve both arguments to absolute paths BEFORE the cd below: the PR file is
 # read after we have entered the source dir, so a relative path (as passed by
@@ -52,6 +67,28 @@ while read -r pr sha _; do
       *)
         echo "warning: PR #${pr} head moved: listed ${sha}, fetched ${head_sha}" >&2
         echo "         re-run the review in design/upstream-pr-bake.md §5" >&2
+        if [ "${strict_sha}" = true ]; then
+          # refs/pull/<n>/head only ever gives the CURRENT head, so reach the
+          # historical commit through GitHub's per-PR merge ref and take its
+          # PR-side parent (the first parent of a merge is the base branch).
+          git fetch --no-tags --depth 300 origin "pull/${pr}/merge" 2>/dev/null || true
+          pinned="$(git rev-parse --verify --quiet "${sha}^{commit}" || true)"
+          if [ -z "${pinned}" ]; then
+            for parent in $(git rev-parse "FETCH_HEAD^@" 2>/dev/null); do
+              case "$(git rev-parse "${parent}")" in
+                "${sha}"*) pinned="$(git rev-parse "${parent}")"; break ;;
+              esac
+            done
+          fi
+          if [ -z "${pinned}" ]; then
+            echo "error: --at-listed-sha: cannot resolve listed SHA ${sha} for PR #${pr}" >&2
+            echo "       (force-pushed away, or older than --depth 300)" >&2
+            exit 1
+          fi
+          git branch -f "baked-${pr}" "${pinned}"
+          head_sha="${pinned}"
+          echo "pinning PR #${pr} to the listed SHA: ${head_sha}"
+        fi
         ;;
     esac
   fi
