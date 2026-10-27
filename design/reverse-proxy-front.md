@@ -299,10 +299,10 @@ source-accept 與 Zoraxy 白名單裡的 `她的自宅公網 IP/32` 都會在她
 - **這台開發機就在她的線路上**（`curl https://api.ipify.org` ⇒ 她的自宅公網 IP）。所以從這裡打的「internet 探測」
   其實全是**白名單流量**（清單 idx 4 `proto=all src=<她的 IP>/32` 任何埠都放行），**不能**用來驗證雲端規則有沒生效。
   實測從這裡看 o3 的 `8443`/`8080` 都是 OPEN（因為那是她的 IP），從 **o2**（OCI 資料中心 IP，非白名單）打同一個 port 才是 **closed**。
-- **正確的 origin 位址**：o3 公網 IP 是 `o3PublicIP`（實測 `api.ipify.org` 與 OCI 讀回一致）、o1 `o1PublicIP`、o2 `o2PublicIP`。
+- **正確的 origin 位址**（實測 `api.ipify.org` 與 OCI 讀回一致，值只寫在 private repo o3_stuffs）：o3 / o1(First01) / o2 各有一個 OCI 公網 IP；三台目前的公網位址**都不是**文件之前用的那個。
   文件之前出現的 `staleIP` 是**過時位址**（反查無 PTR、也不是任何 VNIC 的公網 IP）；用它探測會得到一堆假的 closed。已從文件裡移除（公開倉庫也不該寫 origin IP，那是 origin bypass 的門票）。
 - **從 o2 驗證的正確結果**：`22 443 25 587` OPEN、`8443 8080` closed（＝雲端縮限生效）、`80 2087` closed（`80` 有 listener 但被 host 端擋/只做導向，`2087` 無 listener）。
-  TLS 側：`openssl s_client -servername ddit.avpclub.uk -connect <o3 公網 IP>:443` 與對 CF edge 都 `Verify return code: 0 (ok)`。
+  TLS 側：`openssl s_client -servername ddit.avpclub.uk -connect <o3 公網 IP>:443` 對 CF edge 與 origin 都 `Verify return code: 0 (ok)`。
   ⚠ 用 `curl` 從 o2 打會得到 `Peer reports incompatible or unsupported protocol version`（那台的 TLS 太舊），**不是**服務掛了；要看 `openssl s_client`。
 ⚠ **`2087` 保留了，但我在 o3/o1/o2/123/124/`19` 都找不到 listener，Zoraxy 設定裡也沒有任何 2087 的引用**（`ss -tlnp`、
 `grep -rn 2087 /root/zoraxy/config/conf/`）。所以這條規則目前是「開著但後面沒人聽」；如果她的服務其實在 **CF Tunnel** 那側
