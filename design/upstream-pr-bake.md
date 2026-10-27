@@ -243,7 +243,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
 
 13. **出口 IP 信譽是獨立於 code 的失敗層：同一個 digest，兩台實例結果相反**（2026-10-27 o3 vs 123 定因）：
     - 兩台都是**同一個 manifest digest** `sha256:73900bee…8932e`（= `ac3f175` 那次 CI，含 bake #599）：
-      o3（OCI VPS，出口 `o3PublicIP`，**AS31898 Oracle**，東京；跑 `codeberg.org/lawlietr/redlib:latest`，arm64）
+      o3（OCI VPS，出口 `<o3 公網 IP>`，**AS31898 Oracle**，東京；跑 `codeberg.org/lawlietr/redlib:latest`，arm64）
       與 123（內網，出口 （她的自宅公網 IP，值在 private repo），**AS4780 DUI**，台北 ADSL；跑 `ghcr.io/lawlietr/redlib:latest`，amd64）。
       兩台的 `RepoDigests` 相同 → **變數不是 code**。
     - 結果：**123** 貼文頁 200 / 162 KB / 153 則留言、log 零錯誤；**o3** 貼文頁 404 / 6.5 KB，頁面寫
@@ -256,7 +256,7 @@ while read -r pr _; do git -C upstream merge --no-ff "refs/pr/$pr" -m "Merge PR#
     - **掛 Cloudflare CDN（橘雲）不會改變這件事**：橘雲代理的是**進向**（訪客 → CF edge → origin），遮的是訪客的
       IP 與瀏覽器指紋，保護對象是 origin（DDoS、隱源 IP）。Reddit 看到的只有**出向**那段：由該機器自己的公網 IP
       直接發起的 `redlib → www.reddit.com`，這段不經過 CF，CF 不會出現在路徑上，也不會改寫我們這端的 TLS/HTTP2 指紋。
-      所以「我們的 web 有掛 CF → Reddit 會指紋識別到 o3 有 CDN」這個擔心不存在：Reddit 只看到 `o3PublicIP`；
+      所以「我們的 web 有掛 CF → Reddit 會指紋識別到 o3 有 CDN」這個擔心不存在：Reddit 只看到 `<o3 公網 IP>`；
       而 redlib 的 wreq 指紋已是瀏覽器級、列表也拿到 200，卻照樣在 `/svc/shreddit/` 吃 403 → **IP 信譽問題，不是指紋問題**。
       （CF Tunnel 同樣只處理進向；要把出口變成 CF 的 ASN 得在主機跑 WARP 之類出口代理，但 Reddit 對 Cloudflare ASN
       照樣擋——不是可用解方。）

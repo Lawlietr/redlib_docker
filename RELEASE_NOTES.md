@@ -35,7 +35,7 @@ now has an explicit `--at-listed-sha` mode (exposed as `--build-arg BAKE_ARGS=--
 really builds at the listed SHA, for reproducing a past bake combination.
 
 **Not a fix for instances on datacenter IPs.** An instance whose egress IP is a hosting ASN (we hit this
-on an Oracle Cloud box, `o3PublicIP`, AS31898) gets `Reddit returned 403 Forbidden | /svc/shreddit/comments/...`
+on an Oracle Cloud box, `<o3 公網 IP>`, AS31898) gets `Reddit returned 403 Forbidden | /svc/shreddit/comments/...`
 on every thread page from the very first fragment, while the *same image digest* works from a residential
 line. That failure mode is egress IP reputation, not code, and a pin bump cannot repair it; a Cloudflare
 CDN in front of the instance does not help either, because the request to Reddit leaves the box itself.

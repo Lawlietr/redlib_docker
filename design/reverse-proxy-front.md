@@ -16,7 +16,7 @@
 Cloudflare（ddit CNAME → o3.avpclub.uk，proxied=true；orange cloud）
   │ HTTPS（Zoraxy  termination，且 zoraxy 的 trusted_proxies.json 內含 CF 全網段）
   ▼
-o3（o3PublicIP，Oracle Tokyo AS31898）
+o3（<o3 公網 IP>，Oracle Tokyo AS31898）
   │  zoraxy_o3 容器（:80/:443/:8000），规则檔：
   │  /root/zoraxy/config/conf/proxy/ddit.avpclub.uk.config
   │    ActiveOrigins   = <123 的 ZT IP>:8080      ← 123（Ubox-02）的 ZeroTier IP
@@ -47,7 +47,7 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 | **o3** 本機 | `http://127.0.0.1:8084/...` | **404 / 0 則**，同上 |
 | 三台的 listing | `/r/comics/top/?t=month` | **都 200 / 49,099 B** → 封鎖是**路徑規則**，不是整台被封 |
 
-三台雲主機（o1 `o1PublicIP`、o2 `o2PublicIP`、o3 `o3PublicIP`）經 `ipinfo.io` 全是
+三台雲主機（o1 `<o1 公網 IP>`、o2 `<o2 公網 IP>`、o3 `<o3 公網 IP>`）經 `ipinfo.io` 全是
 **`AS31898 Oracle Corporation`，Tokyo**，同一家雲的同一個出口群 → 同一條 `/svc/shreddit/` 路徑規則把它們全打死。
 
 > ⚠ 不要用 `curl https://www.reddit.com/...` 判別封鎖：三台裸 curl **連列表都 403**（UA-based），
@@ -62,7 +62,7 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 
 | 項目 | o1（first01） | o2 |
 |---|---|---|
-| 公網 IP / AS | o1PublicIP / AS31898 Oracle Tokyo | o2PublicIP / AS31898 Oracle Tokyo |
+| 公網 IP / AS | <o1 公網 IP> / AS31898 Oracle Tokyo | <o2 公網 IP> / AS31898 Oracle Tokyo |
 | OS / kernel | CentOS 7（3.10.0-1160） | CentOS 7（3.10.0-1160） |
 | vCPU / load | 2 / 0.33 | 2 / 0.17 |
 | RAM | 985MB total，525MB available（+8GB swap，已用 68MB） | 985MB total，**385MB available**（swap 已用 204MB） |
@@ -77,8 +77,8 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 
 ## 3. 順帶查出來的三個暴露面（處理狀態見各節標題）
 
-1. **o1 與 o3 的 redlib 都在裸 IP 上以 HTTP 公開**：`http://o1PublicIP:8084/` → 200、
-   `http://o3PublicIP:8084/` → 200（從外部機器直接可達）。o1 那台還是**舊 pin、貼文頁全壞**的幽靈實例。
+1. **o1 與 o3 的 redlib 都在裸 IP 上以 HTTP 公開**：`http://<o1 公網 IP>:8084/` → 200、
+   `http://<o3 公網 IP>:8084/` → 200（從外部機器直接可達）。o1 那台還是**舊 pin、貼文頁全壞**的幽靈實例。
    → 建議把 port 綁到 ZeroTier/LAN（`10.147.17.x:8084:8080` 或 `192.168.1.x`），或直接把 o1 的 redlib 停掉、
    把 Zoraxy 的 `InactiveOrigins`（`10.0.0.134:8084`、`<o1 的 ZT IP>:8084`、`<o1 的 ZT IP>:8095`）清乾淨。
 2. **ddit 的「Taiwan Only」其實是黑名單，不是白名單**。Zoraxy 掛在 ddit 上的 access filter
@@ -99,7 +99,7 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 | 探測路徑 | TCP socket 對端 | Zoraxy 判定用的 IP | 結果 |
 |---|---|---|---|
 | 本地 TW 出口 （她的自宅公網 IP，值在 private repo） → **Cloudflare** → `https://note.avpclub.uk/` | CF 邊緣節點 | **CF 邊緣節點** | **403 Zoraxy Forbidden**（即使 `她的自宅公網 IP/32` 就在白名單裡） |
-| 同一台機器 `--resolve note.avpclub.uk:443:o3PublicIP`（**繞過 CF**） | （她的自宅公網 IP，值在 private repo） | 你的真實 IP | **200** |
+| 同一台機器 `--resolve note.avpclub.uk:443:<o3 公網 IP>`（**繞過 CF**） | （她的自宅公網 IP，值在 private repo） | 你的真實 IP | **200** |
 | o3 本機 loopback（`--resolve …:443:127.0.0.1`） | `127.0.0.1` | loopback | **403**（`WhitelistAllowLocalAndLoopback=false`） |
 | 同一時刻 `ddit`（掛黑名單 filter）走上述三路徑 | 同上 | 同上 | 200 / 200 / 200 |
 | 403 發生時在 origin 端被動抓封包（`tcp port 3003`） | — | — | **0 個 GET** → 擋在 Zoraxy，不是應用層 |
@@ -144,8 +144,8 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
 |---|---|---|
 | TW 出口 （她的自宅公網 IP，值在 private repo） → CF → `ddit` | **200 / 62,560 B** | 白名單放行（tw + 這個 IP） |
 | TW 出口 → CF → `note` | **200**（修之前是 403） | 白名單生效且不再誤擋 |
-| o3 公網出口（JP）→ CF → `ddit`／`note` | **403 / 403**，log：`[router:whitelist] [client: o3PublicIP] curl/7.68.0` | 非 TW 現在真的被擋 |
-| 裸 IP 直連 o3（`https://o3PublicIP/` + `Host: ddit…`） | **403** | 同一條規則也蓋住裸 IP 進入 |
+| o3 公網出口（JP）→ CF → `ddit`／`note` | **403 / 403**，log：`[router:whitelist] [client: <o3 公網 IP>] curl/7.68.0` | 非 TW 現在真的被擋 |
+| 裸 IP 直連 o3（`https://<o3 公網 IP>/` + `Host: ddit…`） | **403** | 同一條規則也蓋住裸 IP 進入 |
 | **123 走 ZeroTier 直連 o3（SNI=ddit）** | **403** | ⚠ 內部線路被擋：`10.147.17.0/24` 不在白名單、`WhitelistAllowLocalAndLoopback=false` |
 | o3 loopback（`--resolve …:443:127.0.0.1`） | **403** | ⚠ 健康檢查／本機排障也進不去 |
 | o1／o2（CentOS 7，curl 7.29）→ CF | `http=000`（TLS 交握失敗） | 不是封鎖，是舊 curl 與 CF 交握不了；別拿這兩台的 curl 當探針 |
@@ -185,7 +185,7 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
   加上實測 A/B。上游 main 已經讓 log 也走 gating-aware 解析（`proxyRequestHandler.go:394`），升級後兩者才會一致。
 
 
-### 3.4 外部暴露面（2026-10-27 實測掃描，來源＝o2 的 JP 出口 `o2PublicIP`，非白名單 IP）
+### 3.4 外部暴露面（2026-10-27 實測掃描，來源＝o2 的 JP 出口 `<o2 公網 IP>`，非白名單 IP）
 
 **她的判斷正確：`8084`（redlib）從外部打不到。** 對照組（證明是「外部被擋」而不是「沒在聽」）：
 
@@ -207,11 +207,11 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
 
 | host | internet 可達 | internet 不可達（已測） |
 |---|---|---|
-| **o3** `o3PublicIP` | `22`(ssh)、`25`/`587`(aliasvault SMTP)、`443`(Zoraxy＝ddit 前門)、`8080`(**github-release-monitor**，307→`/en`)、**`8443`(`code-server`)** | `80`(Zoraxy HTTP)、**`8000`(Zoraxy 管理 UI，已鎖好)**、`8084`(redlib)、`3003`/`3005`/`3033`/`3125`/`446`/`6556`/`8001`/`8003`/`8083`/`8085`/`8090`/`8110`/`8120`/`8383`/`8445`/`9993`/`1828`/`853`/`55987` |
-| **o1** `o1PublicIP` | `22`(ssh)、`1828`(`mtproto-proxy`，Telegram proxy，刻意開放) | `80`/`443`、`8084`(redlib)、`8090`(beszel)、`8095`(已綁 <o1 的 ZT IP>)、`8120`(komodo-periphery)、`9001`(portainer)、`853`/`55987` |
+| **o3** `<o3 公網 IP>` | `22`(ssh)、`25`/`587`(aliasvault SMTP)、`443`(Zoraxy＝ddit 前門)、`8080`(**github-release-monitor**，307→`/en`)、**`8443`(`code-server`)** | `80`(Zoraxy HTTP)、**`8000`(Zoraxy 管理 UI，已鎖好)**、`8084`(redlib)、`3003`/`3005`/`3033`/`3125`/`446`/`6556`/`8001`/`8003`/`8083`/`8085`/`8090`/`8110`/`8120`/`8383`/`8445`/`9993`/`1828`/`853`/`55987` |
+| **o1** `<o1 公網 IP>` | `22`(ssh)、`1828`(`mtproto-proxy`，Telegram proxy，刻意開放) | `80`/`443`、`8084`(redlib)、`8090`(beszel)、`8095`(已綁 <o1 的 ZT IP>)、`8120`(komodo-periphery)、`9001`(portainer)、`853`/`55987` |
 
 **掃描裡最值得處理的一項：`o3:8443` = `code-server`（VS Code 遠端），而且它是純 HTTP。**
-當時從 internet 實測 `http://o3PublicIP:8443/` → `302`、`Location: ./login`；本機 `http://127.0.0.1:8443/`
+當時從 internet 實測 `http://<o3 公網 IP>:8443/` → `302`、`Location: ./login`；本機 `http://127.0.0.1:8443/`
 同樣 302，`https://` 則 `UNKNOWN_PROTOCOL`（前面沒有 TLS）。容器有設 `HASHED_PASS`，但憑證走明文、沒有 rate
 limit，而且**登入成功＝o3 上的完整 shell**（code-server 內建 terminal）＝RCE。風險遠高於 8084 那個無認證 redlib。
 
@@ -234,7 +234,7 @@ limit，而且**登入成功＝o3 上的完整 shell**（code-server 內建 term
 它確實存在，只是**在雲端、不在 host**。8084 之類打不到就是因為清單裡沒有那條（本機/ZeroTier 都是 200）。
 `2052/2053/2082/2083/2086/2087/2095/2096` + `8080/8443/8880` 全是 **Cloudflare 支援的 origin 埠**，所以那批規则是她為了
 「CF 記錄可以從任何支援埠打 origin」而開的 —— 但代價就是 **origin bypass**：任何人繞過 CF（連 WAF/國度過濾都沒有）直接打
-`http://o3PublicIP:8443/` 就能碰到 code-server 的登入頁。
+`http://<o3 公網 IP>:8443/` 就能碰到 code-server 的登入頁。
 
 **已做的修正（2026-10-27，經 OCI API，改動只有一條）**：把那條 `tcp / 0.0.0.0/0 / 8443` 的來源改成 **`10.0.0.0/16`（VCN 內）**，
 描述寫 `code-server 8443: VCN-internal only (was 0.0.0.0/0) 2026-10-27`。rule 總數不變（ingress 28 / egress 1）。
@@ -295,6 +295,15 @@ source-accept 與 Zoraxy 白名單裡的 `她的自宅公網 IP/32` 都會在她
 複測（非白名單 internet）：`2052 2053 2082 2083 2086 2095 2096 8880` 全 **closed**；control `443/25/587` 仍 OPEN；
 `ddit` 200 / 63,232 B、`git.avpclub.uk` 307（app 自己的 `/en` 導向）、`code` 200、`bdr` 200 ⇒ **前門沒被打斷**。
 
+**探測源與 IP 的教訓（2026-10-27 23:5x 更正，重要）**：
+- **這台開發機就在她的線路上**（`curl https://api.ipify.org` ⇒ 她的自宅公網 IP）。所以從這裡打的「internet 探測」
+  其實全是**白名單流量**（清單 idx 4 `proto=all src=<她的 IP>/32` 任何埠都放行），**不能**用來驗證雲端規則有沒生效。
+  實測從這裡看 o3 的 `8443`/`8080` 都是 OPEN（因為那是她的 IP），從 **o2**（OCI 資料中心 IP，非白名單）打同一個 port 才是 **closed**。
+- **正確的 origin 位址**：o3 公網 IP 是 `o3PublicIP`（實測 `api.ipify.org` 與 OCI 讀回一致）、o1 `o1PublicIP`、o2 `o2PublicIP`。
+  文件之前出現的 `staleIP` 是**過時位址**（反查無 PTR、也不是任何 VNIC 的公網 IP）；用它探測會得到一堆假的 closed。已從文件裡移除（公開倉庫也不該寫 origin IP，那是 origin bypass 的門票）。
+- **從 o2 驗證的正確結果**：`22 443 25 587` OPEN、`8443 8080` closed（＝雲端縮限生效）、`80 2087` closed（`80` 有 listener 但被 host 端擋/只做導向，`2087` 無 listener）。
+  TLS 側：`openssl s_client -servername ddit.avpclub.uk -connect <o3 公網 IP>:443` 與對 CF edge 都 `Verify return code: 0 (ok)`。
+  ⚠ 用 `curl` 從 o2 打會得到 `Peer reports incompatible or unsupported protocol version`（那台的 TLS 太舊），**不是**服務掛了；要看 `openssl s_client`。
 ⚠ **`2087` 保留了，但我在 o3/o1/o2/123/124/`19` 都找不到 listener，Zoraxy 設定裡也沒有任何 2087 的引用**（`ss -tlnp`、
 `grep -rn 2087 /root/zoraxy/config/conf/`）。所以這條規則目前是「開著但後面沒人聽」；如果她的服務其實在 **CF Tunnel** 那側
 （bitwarden / beszel agent），那 OCI 的 ingress 根本不參與那條路，`2087` 可以一併收掉。**要她確認是哪個服務、在哪台。**

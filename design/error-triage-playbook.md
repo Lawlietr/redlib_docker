@@ -143,7 +143,7 @@ done
 ## 4.2 兩台實例同一支 digest、結果不同 → 是「出口 IP」，不是 bake（2026-10-27 定因）
 
 事件：同一個 manifest digest（`sha256:73900bee…8932e` = 我們的 commit `ac3f175`，含 bake #599）
-部署在 **o3**（OCI VPS，出口 `o3PublicIP`，AS31898 Oracle，東京）與 **123**（內網，出口
+部署在 **o3**（OCI VPS，出口 `<o3 公網 IP>`，AS31898 Oracle，東京）與 **123**（內網，出口
 （她的自宅公網 IP，值在 private repo），AS4780 DUI，台北 ADSL）。**123 貼文頁 200 / 153 則留言、log 零錯誤；
 o3 貼文頁 404、頁面寫 `Reddit returned 403 Forbidden | /svc/shreddit/comments/r/<sub>/t3_<id>`**。
 
@@ -251,7 +251,7 @@ ssh 123 'docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" redlib; \
   這段流量不會經過 Cloudflare（CF 不會出現在路徑上，也不會改寫我們這邊的 TLS/HTTP2 指紋）。
   唯一例外：主機上另外跑 `cloudflare-warp` 之類的出口代理（見下）。
 - 所以**沒有任何東西「被 Reddit 指紋識別」到 o3 有 CDN 這件事**：Reddit 在自己的 edge 上看到的
-  就是 `o3PublicIP`（AS31898 Oracle）發出的請求，而 redlib 用的 wreq 已是瀏覽器級
+  就是 `<o3 公網 IP>`（AS31898 Oracle）發出的請求，而 redlib 用的 wreq 已是瀏覽器級
   TLS/JA4/HTTP2 模擬（`src/client.rs` 的 `build_emulated_client`）、列表也拿得到 200，
   卻照樣在 `/svc/shreddit/` 吃 403 → 證據指向 IP 信譽而不是指紋。
 - **redlib 本身沒有 proxy 設定**：上游 `src/` 只有**進向**的媒體 proxy route（`main.rs` 的
