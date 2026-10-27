@@ -142,6 +142,7 @@ Multi-stage build:
 ### Front Door vs Egress (read before blaming a proxy or a "different machine")
 `design/reverse-proxy-front.md` holds the proven topology. Two rules that cost us two wrong diagnoses:
 - **反向代理／ZeroTier／Cloudflare 都在入口側，不影響 Reddit 看到的 IP。** 決定被封與否的是「**redlib 這個行程跑在哪一台**」的 egress。`ddit.avpclub.uk` 的入口是 o3 上的 Zoraxy（`conf/proxy/ddit.avpclub.uk.config`，`ActiveOrigins = someZT:8080`），但真正抓 Reddit 的是 **123**，所以它能動；o1/o2/o3 本機的 redlib 全被 `/svc/shreddit/` 打死（同 `AS31898` Oracle Tokyo）。
+- **放在 Cloudflare 後面的國家黑/白名單必須先開 access filter 的 Trusted Proxy Gating**，否則 Zoraxy 判的是 CF 邊緣節點的國家（US/NL/AU/CR），等於完全沒在過濾；開了它才會讀 `CF-Connecting-IP`。實測與原始碼行號：`design/reverse-proxy-front.md` §3.3。
 - **比較兩台之前先證明「兩台在跑同一支映像」與「redlib 在哪台」**（`docker inspect --format "{{.Image}}"`、Zoraxy 規則的 `ActiveOrigins`）。雲主机（o1/o2/o3）資源都夠跑 redlib（idle RSS 約 43MB），但只有出口乾凈的機器能用。
 
 ### Error Triage (runtime bug reports)

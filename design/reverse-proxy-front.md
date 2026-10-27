@@ -71,7 +71,7 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
 | 現在跑 redlib？ | **是**：`redlib`（`codeberg.org/lawlietr/redlib:latest`，舊 pin，`0.0.0.0:8084`）+ `redlib-cu-test`（`o1ZT:8095`） | 否（我這輪起了臨時探測容器 `:8086`，測完已刪） |
 | 結論 | **不該跑**（出口被封 + 舊 pin + 裸 IP 公開） | **不該跑**（出口被封；RAM 較緊但足夠） |
 
-两台都只能當**入口/跳板**（o3 今天就是這個角色），不能當 Reddit-facing 的實例。
+兩台都只能當**入口/跳板**（o3 今天就是這個角色），不能當 Reddit-facing 的實例。
 
 ---
 
@@ -85,8 +85,65 @@ reddit.com（listing 走 /r/<sub>，留言走 /svc/shreddit/comments/...）
    （UUID `ZoraxyFilterID-4977-4288-825b-0d5ab817f670`，Name `RU CN MX Blacked`，Desc `Taiwan Only`）實際內容是：
    `BlacklistEnabled=true`、`BlackListContryCode={cn,mx,ru}`、`WhitelistEnabled=false`。
    → 實測從 o3（JP 出口）打 `https://ddit.avpclub.uk/` 得 **200 / 60,703 B**，**JP/US/DE 等都進得來**。
-   要真 TW-only：把同一個 filter 改成 `WhitelistEnabled=true` 且 `WhiteListCountryCode` 只留 `tw`
-   （保留白名單 IP 給自己的機器），或直接在新前門用 `CF-IPCountry`（見下）。
+   要真 TW-only：**先**打開那條 access filter 的 **Trusted Proxy Gating**（見 §3.3，不做這步的話白名單會連你自己都擋），
+   再把 `WhiteListCountryCode` 留 `tw`（+自己的 IP 白名單）；或改在新前門用 `CF-IPCountry`（見 §4）。
+
+---
+
+### 3.3 「TW 白名單反而把自己擋掉」的根因：access filter 不看 CF 標頭（實測＋原始碼雙重證明）
+
+2026-10-27 重現（同一台 o3、同一條 `Taiwan White` filter，UUID `b6f4dd52-…`，掛在 `note.avpclub.uk` 上；
+該 filter 內容 = `WhitelistEnabled=true`、`WhiteListCountryCode={tw}`、`WhiteListIP={她的自宅公網IP/32}`、
+`WhitelistAllowLocalAndLoopback=false`、`TrustProxyHeadersOnly=false`）：
+
+| 探測路徑 | TCP socket 對端 | Zoraxy 判定用的 IP | 結果 |
+|---|---|---|---|
+| 本地 TW 出口 `她的自宅公網IP` → **Cloudflare** → `https://note.avpclub.uk/` | CF 邊緣節點 | **CF 邊緣節點** | **403 Zoraxy Forbidden**（即使 `她的自宅公網IP/32` 就在白名單裡） |
+| 同一台機器 `--resolve note.avpclub.uk:443:o3PublicIP`（**繞過 CF**） | `她的自宅公網IP` | 你的真實 IP | **200** |
+| o3 本機 loopback（`--resolve …:443:127.0.0.1`） | `127.0.0.1` | loopback | **403**（`WhitelistAllowLocalAndLoopback=false`） |
+| 同一時刻 `ddit`（掛黑名單 filter）走上述三路徑 | 同上 | 同上 | 200 / 200 / 200 |
+| 403 發生時在 origin 端被動抓封包（`tcp port 3003`） | — | — | **0 個 GET** → 擋在 Zoraxy，不是應用層 |
+
+根因在 Zoraxy 解析 client IP 的那個函式（`tobychui/zoraxy`：`src/mod/access/trustedProxy.go:191`）：
+
+```go
+func (s *AccessRule) GetClientIP(r *http.Request) string {
+    remoteIP := netutils.GetRequesterIPUntrusted(r)       // 只看 TCP socket 對端
+    if s.TrustProxyHeadersOnly && s.parent != nil && s.parent.IsTrustedProxy(remoteIP) {
+        return netutils.GetRequesterIP(r)                 // 只有這時才讀 X-Real-IP / CF-Connecting-IP / XFF
+    }
+    return remoteIP                                       // 否則一律用 socket IP
+}
+```
+
+- 她的 filter 裡 **`TrustProxyHeadersOnly: false`**（舊 filter 乾脆沒有這個欄位；`src/mod/access/access.go:44` 預設 false）
+  → 走 Cloudflare 時 socket 對端是 **CF 邊緣節點**，而 geodb（`conf/geodb/geoipv4.csv`，2026-05-06 版）把那些段成
+  **US / NL / AU / CR**。實測例：我看到的對端是 `172.68.228.140`（∈ `172.64.0.0/13`）→ 既不是 `tw`、也不在她的 IP 白名單 → 一律 403。
+- geodb 對各段的判定（同一份 CSV，用 python 查）：`她的自宅公網IP → TW`、`1.200.0.1 / 111.240.x / 36.230.x → TW`、
+  `173.245.48.5 / 104.16.x / 198.41.128.1 / 188.114.96.1 → US`、`141.101.64.1 → NL`、`162.158.1.1 → AU`、
+  `190.93.240.1 / 131.0.72.1 → CR`、`10.147.17.x → NA`（private）。
+- **CF 確實把真實 client 送進來了**：在 o3 上抓 `tcp port 8080`（Zoraxy → origin）看到
+  `X-Forwarded-For: 她的自宅公網IP, 172.68.228.140` —— 第一段是 CF 眼中的你，第二段是 Zoraxy 自己附加的 socket 對端。
+- `conf/trusted_proxies.json` 已內含完整 CF 網段（15 個 v4 + 7 個 v6），所以 gating 一開就會走到 `GetRequesterIP()`，
+  讀 `CF-Connecting-IP`（CF 一律送）或 XFF 最左段 → 得到真實 client。
+- 比對邏輯本身沒問題：`src/mod/access/accessRule.go:90 IsWhitelisted()` = **國家（geodb）或 IP（wildcard／CIDR）任一命中即放行**；
+  國家碼一律 `strings.ToLower`（`tw` 小寫正確）；`netutils.MatchIpCIDR` 支援 `她的自宅公網IP/32`。
+
+**修法（在她自己的 Zoraxy UI 做，別用文字編輯器改 JSON：真值在加密的 `sys.db`，352MB）**
+1. Access Control → 選那條 filter → **Enable Trusted Proxy Gating**
+   （UI 原文：*"Only trust X-Real-IP or X-Forwarded-For headers from trusted proxy listed in the whitelist advanced settings"*；
+   endpoint `/api/whitelist/trustProxy`）。
+2. 要讓 ZeroTier／LAN 也進得來：開 **Enable LAN and Loopback**，或在 IP 白名單加 `10.147.17.0/24`（比開 loopback 精準）。
+3. 白名單留 `tw` + 自己的固定出口 IP；之後非 TW 訪客才會真的被擋。
+
+**連帶結論（不太舒服但重要）**：`ddit` 現行掛的 `RU CN MX Blacked` 也沒有開 gating，所以那條「黑名單 CN/RU/MX」
+兩年來實际上判的是 **CF 邊緣節點**的國家（US/NL/AU/CR），既沒擋到 CN/RU/MX 訪客、也幾乎不會擋到任何東西 ——
+我 2026-10-27 從 JP 出口打得進 200 就是這個原因，而不是「JP 被允許」。
+**放在 Cloudflare 後面的國家黑/白名單，沒開 Trusted Proxy Gating ＝ 沒有在過濾。**
+
+**順帶**：`conf/log_conf.json` = `{"enabled": false}` → Zoraxy 完全不寫 access log（`log/zr_2026-10.log` 0 bytes），
+所以她的 blocked 事件沒有事後證據可查；要做這類排障得先在 UI 打開 Access Log（blocked 會記 reason `blacklist`／`whitelist`）。
+
 
 ---
 
