@@ -137,7 +137,7 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
 3. 白名單留 `tw` + 自己的固定出口 IP；之後非 TW 訪客才會真的被擋。
 
 **連帶結論（不太舒服但重要）**：`ddit` 現行掛的 `RU CN MX Blacked` 也沒有開 gating，所以那條「黑名單 CN/RU/MX」
-兩年來實际上判的是 **CF 邊緣節點**的國家（US/NL/AU/CR），既沒擋到 CN/RU/MX 訪客、也幾乎不會擋到任何東西 ——
+兩年來實際上判的是 **CF 邊緣節點**的國家（US/NL/AU/CR），既沒擋到 CN/RU/MX 訪客、也幾乎不會擋到任何東西 ——
 我 2026-10-27 從 JP 出口打得進 200 就是這個原因，而不是「JP 被允許」。
 **放在 Cloudflare 後面的國家黑/白名單，沒開 Trusted Proxy Gating ＝ 沒有在過濾。**
 
