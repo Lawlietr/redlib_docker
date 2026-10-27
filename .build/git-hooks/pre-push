@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# pre-push: 這倉庫是 public（GitHub + Codeberg），推前一定扫一次機敏值。
+# 安裝（每個 clone 一次）：git config core.hooksPath .build/git-hooks
+# 跳過（只在確定所有值都不敏感時）：GIT_SECRET_SCAN=skip git push ...
+set -euo pipefail
+if [ "${GIT_SECRET_SCAN:-run}" = "skip" ]; then
+  printf '\u26a0 pre-push 機敏掃描被跳過（GIT_SECRET_SCAN=skip\n' >&2
+  exit 0
+fi
+cd "$(git rev-parse --show-toplevel)"
+exec .build/secret_scan.sh

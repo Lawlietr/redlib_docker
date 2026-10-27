@@ -300,11 +300,11 @@ source-accept 與 Zoraxy 白名單裡的 `她的自宅公網 IP/32` 都會在她
 （bitwarden / beszel agent），那 OCI 的 ingress 根本不參與那條路，`2087` 可以一併收掉。**要她確認是哪個服務、在哪台。**
 
 **（b）code-server 從 `0.0.0.0:8443` 改成綁三個位址**（o3 `/root/docker-code-server/docker-compose.yml`，非 Komodo 管理）：
-`127.0.0.1:8443`（保留 break-glass）、`10.0.0.134:8443`（Zoraxy 的 origin）、`o3ZT:8443`（ZeroTier）。
+`127.0.0.1:8443`（保留 break-glass）、`10.0.0.134:8443`（Zoraxy 的 origin）、`<o3 的 ZT IP>:8443`（ZeroTier）。
 改前備份：`o3:/root/backups/code-server/compose_20261027T233513.yml`、`o3:/root/docker-code-server/docker-compose.yml.pre-bind-20261027T233513`，
 `sha256(pre)=5b803a49…83d1`（**檔内含明文密碼，所以備份檔只在機器上、不入 git**）。改前 `ss -tn state established` 確認**沒有人連著**，重建只中斷幾秒。
 驗證：`ss -tlnp` 只有那三個位址（**`0.0.0.0` 與 `[::]` 都消失了**，連同之前的 IPv6 全域綁定）；
-`127.0.0.1:8443/login`、`10.0.0.134:8443/login`、`o3ZT:8443/login` 都 200；`123 → <o3 的 ZT IP>:8443/login` 200；
+`127.0.0.1:8443/login`、`10.0.0.134:8443/login`、`<o3 的 ZT IP>:8443/login` 都 200；`123 → <o3 的 ZT IP>:8443/login` 200；
 `https://code.avpclub.uk/login` 200（`<title>code-server login`）；非白名單 internet → `8443` closed；日誌 0 個 error、`config/{data,extensions,workspace}` 都還在。
 
 ⚠ **要記住的一件事（不然會以為綁定就等於關掉公網）**：OCI 的公網 IP 是 **NAT/DNAT 到 VNIC 的 `10.0.0.134`**，
