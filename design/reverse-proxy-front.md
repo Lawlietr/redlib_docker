@@ -136,13 +136,53 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
 2. 要讓 ZeroTier／LAN 也進得來：開 **Enable LAN and Loopback**，或在 IP 白名單加 `10.147.17.0/24`（比開 loopback 精準）。
 3. 白名單留 `tw` + 自己的固定出口 IP；之後非 TW 訪客才會真的被擋。
 
-**連帶結論（不太舒服但重要）**：`ddit` 現行掛的 `RU CN MX Blacked` 也沒有開 gating，所以那條「黑名單 CN/RU/MX」
+**2026-10-27 修好之後的複測**（她把 gating 開起來，而且把 `Taiwan White` 掛到了 `ddit`）：
+兩條 filter 現在都是 `TrustProxyHeadersOnly: true`（`b6f4dd52` 13:33:46 UTC；`ZoraxyFilterID` 一併開），
+`ddit.avpclub.uk.config` 的 `AccessFilterUUID` 已改成 `b6f4dd52`（rule 檔 13:32:38 UTC）。複測矩陣（全部實測）：
+
+| 路徑 | 結果 | 判讀 |
+|---|---|---|
+| TW 出口 `她的自宅公網IP` → CF → `ddit` | **200 / 62,560 B** | 白名單放行（tw + 這個 IP） |
+| TW 出口 → CF → `note` | **200**（修之前是 403） | 白名單生效且不再誤擋 |
+| o3 公網出口（JP）→ CF → `ddit`／`note` | **403 / 403**，log：`[router:whitelist] [client: o3PublicIP] curl/7.68.0` | 非 TW 現在真的被擋 |
+| 裸 IP 直連 o3（`https://o3PublicIP/` + `Host: ddit…`） | **403** | 同一條規則也蓋住裸 IP 進入 |
+| **123 走 ZeroTier 直連 o3（SNI=ddit）** | **403** | ⚠ 內部線路被擋：`10.147.17.0/24` 不在白名單、`WhitelistAllowLocalAndLoopback=false` |
+| o3 loopback（`--resolve …:443:127.0.0.1`） | **403** | ⚠ 健康檢查／本機排障也進不去 |
+| o1／o2（CentOS 7，curl 7.29）→ CF | `http=000`（TLS 交握失敗） | 不是封鎖，是舊 curl 與 CF 交握不了；別拿這兩台的 curl 當探針 |
+
+**因此現在要處理的兩個副作用**：
+1. **break-glass 消失了**：ZeroTier／LAN／loopback 進 `ddit` 這類掛白名單的站會 403。建議在白名單加
+   `10.147.17.0/24`（比開 loopback 精準），或改開 **Enable LAN and Loopback**。
+2. **JP 出口的監控會開始回報失敗**：Uptime Kuma／Beszel 若在 o1/o2/o3 打 `ddit`，現在會拿到 403
+   （log 今天出現過非 TW 的 `client: 34.6.126.9`×16、`45.138.12.58`×6、`104.30.167.164`×2）。
+   解法：把它們的出口 IP 加進白名單，或讓監控直打 `123:8080`（走區網／ZT，不經前門）。
+
+**連帶結論（不太舒服但重要）**：`ddit` 當時掛的 `RU CN MX Blacked` 也沒有開 gating（2026-10-27 已連同白名單一起修正），所以那條「黑名單 CN/RU/MX」在很長一段時間裡
 兩年來實際上判的是 **CF 邊緣節點**的國家（US/NL/AU/CR），既沒擋到 CN/RU/MX 訪客、也幾乎不會擋到任何東西 ——
 我 2026-10-27 從 JP 出口打得進 200 就是這個原因，而不是「JP 被允許」。
 **放在 Cloudflare 後面的國家黑/白名單，沒開 Trusted Proxy Gating ＝ 沒有在過濾。**
 
-**順帶**：`conf/log_conf.json` = `{"enabled": false}` → Zoraxy 完全不寫 access log（`log/zr_2026-10.log` 0 bytes），
-所以她的 blocked 事件沒有事後證據可查；要做這類排障得先在 UI 打開 Access Log（blocked 會記 reason `blacklist`／`whitelist`）。
+**Access log 的位置（我 2026-10-27 一開始判斷錯了，這裡更正）**
+- 請求記錄**本來就在寫**，沒有「要打開」這回事：寫進 `config/log/zr_<YYYY>-<M>.log`（`LogHTTPRequest`，
+  `src/mod/info/logger/trafficlog.go:21`）。我看到 `zr_2026-10.log` 0 bytes 就以為沒在記 —— 錯了，
+  內容在**輪轉檔** `zr_2026-10.log.1`（41MB）與 `zr_2026-10.log.2.gz` 裡面。
+- `conf/log_conf.json`（UI 上的 **Log Settings → Enable Log Rotation**，欄位 `enabled`／`maxSize`／`maxBackups`／`compress`）
+  只管**輪轉**，不是「要不要記 access log」的開關（`src/mod/info/logger/handle.go` 的結構註解寫的就是 rotation）。
+  `maxSize` 為 `"0"` 時代碼會改用預設 25MB（`ApplyLogConfig`），所以沒設定過的結果就是 log 長到 40 多 MB 才切。
+- 真正控制「這條 rule 記不記」的開關在 **rule 編輯器最下面**：**Disable Requests Logging**（勾起來才不記）
+  與 **Disable Statistic Collection**（只關統計、仍照記 log）。她 ddit／note 兩條都是未勾＝有記。
+- UI 看 log 的入口：Log Settings 同頁的 **Open Log Viewer**（`/snippet/logview.html`，列出 zr_* 檔、可篩選與下載）。
+  命令列則用：
+  ```sh
+  L=/root/zoraxy/config/log
+  grep -a "router:whitelist" $L/zr_2026-10.log.1 | tail        # 被白名單擋的 403（黑名單是 router:blacklist）
+  grep -a "origin:ddit.avpclub.uk" $L/zr_2026-10.log.1 | grep -a 2026-10-27 \
+    | grep -oaE "client: [0-9.]+" | sort | uniq -c | sort -rn | head    # 各 client 命中次數
+  ```
+- ⚠ 她這版（`zoraxydocker/zoraxy:latest`，image built 2026-06-09）log 行裡的 `[client: …]` **不能當作
+  「filter 用哪個 IP 判定」的證據**：13:11 那筆 `note` 的 403 印的是 `[client: 她的自宅公網IP]`（真實 client），
+  但那時 gating 還關著、filter 判的其實是 CF 邊緣節點。可信的是 **reason 標記**（`router:whitelist`／`router:blacklist`）
+  加上實測 A/B。上游 main 已經讓 log 也走 gating-aware 解析（`proxyRequestHandler.go:394`），升級後兩者才會一致。
 
 
 ---
