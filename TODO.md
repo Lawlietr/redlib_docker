@@ -33,8 +33,10 @@
 - **為什麼**：2026-10-27 從外部出口實測掃描：code-server 的登入頁從 internet 直接可取，且是**明文 HTTP**
   （無 rate limit、可 sniff 憑證），而它登入成功就是那台 host 上的完整 shell —— 比 redlib 的暴露嚴重得多。
   其餘管理面今天「看不到」只是因為雲端 ingress 沒開，不是因為它們綁在內部介面；一條誤加的規則就全開。
-- **優先級**：**P1**（正式服務不受影響，但這是這次掃描裡唯一的遠端執行面風險）。
-- **參考**：`design/reverse-proxy-front.md` §3.4（外部 port 掃描矩陣、本機對照組、為什麼她的 host 端來源規則管不到容器埠）。
+- **2026-10-27 已處理最大的一塊**：經 OCI API 把那條 `tcp / 0.0.0.0/0 / 8443` 縮成 `10.0.0.0/16`（改前清單已快照在 124 的 `OCI/snapshots/`）。實測：internet 對 `o3:8443` 從「302 拿到登入頁」變成 closed，而 o3 內部與 ZeroTier、`ddit`、`8080/443/25/587` 全部不變。
+- **仍未處理**：(a) `code.avpclub.uk` 的 Cloudflare Tunnel 是**死路**（CNAME 指向 `CFtunnelCode-…`，但 o3 已無 cloudflared → 530/1033），Zoraxy 的 `code.avpclub.uk` 規則因此收不到流量 → 要嘛重建 tunnel、要嘛把該記錄改指 `o3.avpclub.uk`（proxied，讓 Zoraxy 那條規則生效）、要嘛明確只做 ZeroTier-only；(b) 雲端清單裡 `8080 / 8880 / 2052-2096` 都是 CF 支援的 origin 埠，`8080` 現在就真的被 internet 打到（release monitor）→ 同一個 origin-bypass 模式，要嘛縮來源到 CF 的 IP 段，要嘛縮到她自己的 IP；(c) 建議把 code-server 的 port 綁到 `10.0.0.134`（需要 ZT 就再加 `o3ZT`），別再 `0.0.0.0`；(d) 三台 cloudflared 的 tunnel token 落在 argv（`/proc` 全域可讀），建議輪換。
+- **優先級**：**P1**（(a) 是功能破損＋(b)(c) 是同一個暴露模式；正式服務不受影響）。
+- **參考**：`design/reverse-proxy-front.md` §3.4（外部 port 掃描矩陣與雲端清單的具體埠）、§3.5（8443 的 tunnel 真相、改動前後對照表、快照與回滾位置）。
 
 ## P2 — redlib 的裸 IP 端點與 TW-only 政策（前提已用實測更正）
 - **做什麼**：(1) 把 o1/o3 上 redlib 的 `8084` 從 `0.0.0.0` 改綁 ZeroTier/LAN（或直接把 o1 那個舊 pin 的幽靈實例停掉），讓它不依賴雲端規則；順帶清掉 Zoraxy `ddit` 規則裡的 `InactiveOrigins`（已死的 `10.0.0.134:8084`、`o1ZT:8084`、`o1ZT:8095`）。

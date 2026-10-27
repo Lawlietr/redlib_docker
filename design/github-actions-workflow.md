@@ -83,7 +83,7 @@ permissions:
 - **Codeberg / 本地 Forgejo 端**：musl 原生交叉編譯 + `Dockerfile.pack`（見 `design/multi-arch-build.md`）。
   此處的 musl 是「x86 主機要交叉出 arm64」的實作手段，**不是產品承諾**；只有那條備援路被手動跑時才會碰到發佈物。
 - ⚠ 兩條路的 **binary 編譯來源不同**（musl 交叉 vs glibc 原生靜態）；
-  跨 registry 比對時比 tag 與行為。**例外（2026-10-21 起）**：codeberg 的 tag 若是被 §9 的鏡像复制過去的，
+  跨 registry 比對時比 tag 與行為。**例外（2026-10-21 起）**：codeberg 的 tag 若是被 §9 的鏡像復制過去的，
   內容與 digest **完全相同**；只有手動跑 `.forgejo/` 那條備援路會讓 digest 分岔。
 
 ### arm64 的三條路（2026-10-21 選第 3 條，已上線）

@@ -63,7 +63,7 @@
 ### 症狀
 - 12 機的 **docker daemon（Go 1.26）連 `codeberg.org` 一律 `unexpected EOF`**：
   TLS 握手成功、server 回資料後連線被邊緣直接砍（tcpdump 證實 RST/FIN）。
-- 同機 `curl` 與独立 Go 客戶端（1.26/1.27）直連 codeberg 都正常；拉 docker.io 也正常。
+- 同機 `curl` 與獨立 Go 客戶端（1.26/1.27）直連 codeberg 都正常；拉 docker.io 也正常。
   → 問題限定在「docker daemon 對 codeberg.org」這條路徑（邊緣對其連線行為有問題，可回報給 codeberg）。
 - 曾試過無效：關 IPv6（`net.ipv6.conf.all.disable_ipv6=1`，本機 v6 路徑本來就壞）、
   `GODEBUG=tlsmlkem=0`、`GODEBUG=http2client=0`、改 UA。

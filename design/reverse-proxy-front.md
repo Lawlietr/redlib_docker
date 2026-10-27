@@ -211,15 +211,46 @@ func (s *AccessRule) GetClientIP(r *http.Request) string {
 | **o1** `o1PublicIP` | `22`(ssh)、`1828`(`mtproto-proxy`，Telegram proxy，刻意開放) | `80`/`443`、`8084`(redlib)、`8090`(beszel)、`8095`(已綁 `o1ZT`)、`8120`(komodo-periphery)、`9001`(portainer)、`853`/`55987` |
 
 **掃描裡最值得處理的一項：`o3:8443` = `code-server`（VS Code 遠端），而且它是純 HTTP。**
-從 internet 實測 `http://o3PublicIP:8443/` → `HTTP/1.1 302 Found`、`Location: ./login`（29 B）；
-本機 `http://127.0.0.1:8443/` 同樣 `302`（`https://` 則 `UNKNOWN_PROTOCOL`，代表沒有 TLS）。
-`docker inspect code-server` 有 `HASHED_PASS`，所以是有密碼，但：
-1. 憑證走**明文 HTTP**（路徑上任何一跳可 sniff）；
-2. 沒有 rate limit／fail2ban，可被慢速 brute force；
-3. **登入成功＝一個 o3 上的完整 shell**（code-server 內建 terminal）＝RCE。
-它的風險遠高於 8084 那個無認證的 redlib。修法（她已用過的模式）：把 Oracle 的 `8443` ingress 拿掉，
-改從 ZeroTier 進 `http://o3ZT:8443`；或把 port 綁到 ZT 介面 —— o1 上的 `redlib-cu-test`
-已經是 `o1ZT:8095->8080/tcp` 這種寫法，照抄即可。
+當時從 internet 實測 `http://o3PublicIP:8443/` → `302`、`Location: ./login`；本機 `http://127.0.0.1:8443/`
+同樣 302，`https://` 則 `UNKNOWN_PROTOCOL`（前面沒有 TLS）。容器有設 `HASHED_PASS`，但憑證走明文、沒有 rate
+limit，而且**登入成功＝o3 上的完整 shell**（code-server 內建 terminal）＝RCE。風險遠高於 8084 那個無認證 redlib。
+
+### 3.5 8443 的真相：它是 Cloudflare Tunnel 的 legacy 設計，但那條 tunnel 已經死了（2026-10-27 已修正）
+
+**她的記憶是對的一半**：`code.avpclub.uk` 在 Cloudflare 是一筆 **CNAME 到 `CFtunnelCode-….cfargotunnel.com`**，
+也就是 Cloudflare Tunnel，不是「CF proxied → o3:443 → Zoraxy」。但實測：
+
+- **那條 tunnel 沒有 connector**：`https://code.avpclub.uk/login` → **HTTP 530、error code 1033**（origin 連不到）。
+- o3 上**沒有 cloudflared**（`docker ps -a`／`docker images`／`pgrep`／`/etc/cloudflared` 全空，與 `o3_stuffs/o3/doc/cloudflare-tunnel.md`「已停止、容器與 image 已不在 o3」一致）。
+- 還在跑的 cloudflared 只有三台，且都是**別的** tunnel：`o1` → `CFtunnelB19-…`（＝ `b19.avpclub.uk`）、`o2` → `CFtunnelBdr-…`（＝ `bdr.avpclub.uk`）、`123` → `CFtunnel123-…`（DNS 裡沒有記錄引用它）。
+  ⚠ 它們的 **tunnel token 就在程序 argv 裡**（`/proc/<pid>/cmdline` 全域可讀）→ 別把 `pgrep -a cloudflared` 的輸出貼進任何地方；建議找時間在 CF 那裡輪換。
+- 所以 `code.avpclub.uk` 目前**不是** code-server 的入口；她能用的其實是 **ZeroTier**（`http://o3ZT:8443` → 200）與 host 內部。
+  而 Zoraxy 那條 `code.avpclub.uk` 規則（origin `10.0.0.134:8443`，`RequireTLS=false`）對這個 hostname **收不到流量**＝目前是死設定。
+
+**真正的邊界在哪裡（這一節把 §3.4 的「雲端規則」講成具體證據）**：OCI 只有一個 VCN（`vcn-20201222-1300`，`10.0.0.0/16`）、
+一個 subnet、**一個三台共用的 `Default Security List`**（o1/o2/o3 都沒有掛 NSG）。28 條 ingress 裡 tcp 對 `0.0.0.0/0` 開放的
+具體埠是：`22 80 443 2052 2053 2082 2083 2086 2087 2095 2096 8080 8443 8880 25 587 1828 24826 24852 33717 853 21115-21119`（rustdesk 那兩條有描述），
+外加 `udp 55987 853 21116`、`icmp`，以及一條 **`proto=all / src=她的自宅公網IP/32 / 任何埠`** —— 這就是她說的「對我的外網 IP 全開」，
+它確實存在，只是**在雲端、不在 host**。8084 之類打不到就是因為清單裡沒有那條（本機/ZeroTier 都是 200）。
+`2052/2053/2082/2083/2086/2087/2095/2096` + `8080/8443/8880` 全是 **Cloudflare 支援的 origin 埠**，所以那批規则是她為了
+「CF 記錄可以從任何支援埠打 origin」而開的 —— 但代價就是 **origin bypass**：任何人繞過 CF（連 WAF/國度過濾都沒有）直接打
+`http://o3PublicIP:8443/` 就能碰到 code-server 的登入頁。
+
+**已做的修正（2026-10-27，經 OCI API，改動只有一條）**：把那條 `tcp / 0.0.0.0/0 / 8443` 的來源改成 **`10.0.0.0/16`（VCN 內）**，
+描述寫 `code-server 8443: VCN-internal only (was 0.0.0.0/0) 2026-10-27`。rule 總數不變（ingress 28 / egress 1）。
+用 124 上的 `oci` SDK（`/root/.oci/config`）執行；改前的完整清單已快照到
+`124:/root/Opencode_Stuffs/o3_stuffs/OCI/snapshots/security_list_pre_8443_fix_20261027_223232.json`（要回滾就用它）。
+波及面先查過：**只有 o3 有 8443 listener**（o1/o2/123 都沒有）。前後對照：
+
+| 探測 | 改前 | 改後 |
+|---|---|---|
+| internet（o2 JP）→ `o3:8443` | **OPEN，302 → `./login`（29 B）** | **closed/filtered，`http=000`** ✅ |
+| internet → `o3:8080`（對照組） | OPEN / 307 | OPEN / 307（未變） |
+| internet → `o3:443` / `25` / `587`（對照組） | OPEN | OPEN（未變） |
+| o3 內部 `10.0.0.134:8443/login`、`127.0.0.1:8443/login` | 200 / 200 | **200 / 200**（未斷） |
+| **ZeroTier `123 → o3ZT:8443/login`** | 200 | **200**（ZT 走 UDP 封裝，不受 VCN ingress 影響） |
+| `ddit.avpclub.uk` 經 CF | 200 / 62.5 KB | **200 / 62,151 B** |
+| `code.avpclub.uk` 經 CF | 530（1033） | 530（1033）（既有損壞，與本次改動無關） |
 
 **同一個原則適用於其他「只靠雲端規則擋住」的管理面**（目前都被 Oracle 規則擋著，但只要一條 ingress 加錯就全開）：
 `o1:9001` Portainer、`o1:8120`／`o3:8120` Komodo periphery、`o1:8090` Beszel、`o3:8383` PeekApping、
